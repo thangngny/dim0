@@ -323,3 +323,129 @@ async def test_merge_notes_repoints_edges_and_drops_self_loops(
     surviving_link_ids = {link.id for link in graph_store.links.values()}
     assert c_to_b.id in surviving_link_ids  # repointed in-place
     assert a_to_b.id not in surviving_link_ids  # self-loop dropped
+
+
+@pytest.mark.asyncio
+async def test_split_note_creates_children(graph_store, board_id, agent_bridge):
+    """Two-phase split: preview reports new-node count, confirm creates siblings.
+
+    The original is deleted by default; the two new notes carry the given
+    content chunks and inherit the original's `parent_id`.
+    """
+    original = await _make_note(graph_store, board_id, label="Big", content="one\ntwo")
+    preview = await agent_bridge.split_note(
+        board_id=board_id, node_id=original.id, parts=["one", "two"], confirm=False)
+    assert preview["preview"]["new_nodes"] == 2
+
+    result = await agent_bridge.split_note(
+        board_id=board_id, node_id=original.id, parts=["one", "two"], confirm=True)
+    assert result["created_ids"]
+    if result["delete_original"]:
+        assert (await graph_store.get_nodes([original.id])) == []
+    new_notes = await graph_store.get_nodes(result["created_ids"])
+    assert len(new_notes) == 2
+    assert {n.content.markdown for n in new_notes} == {"one", "two"}
+
+
+@pytest.mark.asyncio
+async def test_split_note_repoints_inbound_edges(
+    graph_store, board_id, agent_bridge,
+):
+    """Inbound edges to the original are repointed onto the first new note."""
+    from topix.datatypes.note.link import Link
+    original = await _make_note(graph_store, board_id, label="Big", content="x")
+    other = await _make_note(graph_store, board_id, label="Other", content="y")
+    inbound = Link(source=other.id, target=original.id, graph_uid=board_id)
+    await agent_bridge.add_links(board_id=board_id, links=[inbound])
+
+    preview = await agent_bridge.split_note(
+        board_id=board_id, node_id=original.id, parts=["a", "b"], confirm=False)
+    assert preview["preview"]["inbound_edges_repointed"] == 1
+
+    result = await agent_bridge.split_note(
+        board_id=board_id, node_id=original.id, parts=["a", "b"], confirm=True)
+    new_ids = result["created_ids"]
+    repointed = graph_store.links[inbound.id]
+    assert repointed.target == new_ids[0]
+    assert repointed.source == other.id  # source untouched
+
+
+@pytest.mark.asyncio
+async def test_split_note_keeps_original_when_delete_false(
+    graph_store, board_id, agent_bridge,
+):
+    """delete_original=False leaves the original in the store."""
+    original = await _make_note(graph_store, board_id, label="Big", content="x")
+    result = await agent_bridge.split_note(
+        board_id=board_id, node_id=original.id, parts=["a", "b"],
+        confirm=True, delete_original=False,
+    )
+    assert result["delete_original"] is False
+    assert (await graph_store.get_nodes([original.id]))  # original still present
+    assert len(result["created_ids"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_split_note_rejects_empty_parts(graph_store, board_id, agent_bridge):
+    """Empty parts list raises ValueError."""
+    original = await _make_note(graph_store, board_id, label="Big", content="x")
+    with pytest.raises(ValueError):
+        await agent_bridge.split_note(
+            board_id=board_id, node_id=original.id, parts=[], confirm=True)
+
+
+class _FakeSocket:
+    """Stand-in for fastapi.WebSocket — only `send_text` is exercised."""
+
+    def __init__(self) -> None:
+        """Init."""
+        self.sent: list[str] = []
+
+    async def send_text(self, raw: str) -> None:
+        """Record the frame."""
+        self.sent.append(raw)
+
+
+@pytest.mark.asyncio
+async def test_split_note_broadcasts_node_add_for_new_notes(
+    graph_store: _MemGraphStore,
+    board_id: str,
+    agent_bridge: AgentBoardBridge,
+) -> None:
+    """Confirm-path split emits a `peer-op` with `node.add` ops for new notes.
+
+    Symmetric with `delete_subtree` / `merge_notes` broadcasting their
+    `node.remove` ops: live collaborators should see the new notes
+    immediately, not only on the next board reload.
+    """
+    import json
+
+    original = await _make_note(graph_store, board_id, label="Big", content="x")
+    # Join a live room so the bridge's broadcast has a listener.
+    sock = _FakeSocket()
+    await agent_bridge._registry.join(board_id, sock, "u1")
+
+    result = await agent_bridge.split_note(
+        board_id=board_id, node_id=original.id, parts=["a", "b"], confirm=True,
+    )
+    assert len(result["created_ids"]) == 2
+
+    # The bridge emits one peer-op batch per broadcast call. `add_notes`
+    # (the bridge method) broadcasts a `node.add` batch for the new
+    # notes; the trailing broadcast emits `edge.update` / `node.remove`.
+    node_add_batches = []
+    for raw in sock.sent:
+        msg = json.loads(raw)
+        if msg.get("kind") == "peer-op":
+            ops = msg["batch"]["ops"]
+            if any(op["type"] == "node.add" for op in ops):
+                node_add_batches.append(ops)
+    assert node_add_batches, "expected at least one peer-op batch with node.add ops"
+    # The node.add ops should reference the newly created note ids.
+    added_ids = {
+        op["node"]["id"]
+        for ops in node_add_batches
+        for op in ops
+        if op["type"] == "node.add"
+    }
+    assert added_ids == set(result["created_ids"])

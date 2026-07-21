@@ -407,6 +407,81 @@ class AgentBoardBridge:
             "target_id": target_id,
         }
 
+    async def split_note(
+        self,
+        *,
+        board_id: str,
+        node_id: str,
+        parts: list[str],
+        confirm: bool = False,
+        delete_original: bool = True,
+        user_uid: str | None = None,
+    ) -> dict:
+        """Split one note into N sibling notes carrying the given content chunks.
+
+        New notes inherit the original's `parent_id`. Inbound edges to the
+        original are repointed onto the first new note. The original is
+        deleted when `delete_original=True`. Two-phase via `confirm`.
+        """
+        if not parts:
+            raise ValueError("parts must be a non-empty list of content chunks.")
+
+        notes = await self._graph_store.get_nodes([node_id])
+        if not notes or notes[0].graph_uid != board_id:
+            raise ValueError("Node not found in the current board scope.")
+        original = notes[0]
+
+        graph = await self._graph_store.get_graph(board_id)
+        inbound = [
+            e for e in (graph.edges if graph else [])
+            if e.target == node_id and e.source != node_id
+        ]
+
+        if not confirm:
+            return {
+                "preview": {
+                    "new_nodes": len(parts),
+                    "inbound_edges_repointed": len(inbound),
+                    "delete_original": delete_original,
+                },
+            }
+
+        from topix.agents.notes.service import build_note
+
+        new_ids: list[str] = []
+        for chunk in parts:
+            child = await build_note(
+                graph_store=self._graph_store,
+                graph_uid=board_id,
+                label=(original.label.markdown if original.label else None),
+                content=chunk,
+                note_type=original.style.type,
+                parent_id=original.parent_id,
+            )
+            await self.add_notes(board_id=board_id, notes=[child])
+            new_ids.append(child.id)
+
+        # Repoint inbound edges onto the first new note.
+        if inbound and new_ids:
+            updates = [(e.id, {"target": new_ids[0]}) for e in inbound]
+            await self._graph_store.update_links(updates=updates)
+
+        ops: list[dict[str, Any]] = []
+        if delete_original:
+            await self._graph_store.delete_nodes(node_ids=[node_id], user_uid=user_uid)
+            ops.append({"type": "node.remove", "node": {"id": node_id}})
+        ops += [
+            {
+                "type": "edge.update",
+                "id": e.id,
+                "patch": {"target": {"nodeId": new_ids[0]}},
+                "prev": {},
+            }
+            for e in inbound
+        ]
+        await self._broadcast(board_id=board_id, ops=ops)
+        return {"created_ids": new_ids, "delete_original": delete_original}
+
     # ------------------------------------------------------------------
 
     async def _broadcast(self, *, board_id: str, ops: list[dict[str, Any]]) -> None:
