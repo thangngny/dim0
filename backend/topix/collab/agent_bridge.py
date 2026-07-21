@@ -162,6 +162,51 @@ class AgentBoardBridge:
             ops=[{"type": "edge.remove", "edge": {"id": link_id}}],
         )
 
+    async def delete_subtree(
+        self,
+        *,
+        board_id: str,
+        node_id: str,
+        confirm: bool = False,
+        user_uid: str | None = None,
+    ) -> dict:
+        """Delete a node and its descendants plus internal edges.
+
+        Two-phase: `confirm=False` returns a preview of affected counts;
+        `confirm=True` performs the delete and broadcasts `node.remove` +
+        `edge.remove` ops.
+        """
+        nodes = await self._graph_store.get_nodes([node_id])
+        if not nodes or nodes[0].graph_uid != board_id:
+            raise ValueError("Node not found in the current board scope.")
+
+        descendants = await self._graph_store.get_nodes_descendants([node_id])
+        subtree_ids = [node_id] + [d.id for d in descendants]
+
+        graph = await self._graph_store.get_graph(board_id)
+        edge_ids = [
+            e.id for e in (graph.edges if graph else [])
+            if e.source in subtree_ids or e.target in subtree_ids
+        ]
+
+        if not confirm:
+            return {"preview": {"nodes": len(subtree_ids), "edges": len(edge_ids)}}
+
+        await self._graph_store.delete_nodes(node_ids=subtree_ids, user_uid=user_uid)
+        if edge_ids:
+            await self._graph_store.delete_links(link_ids=edge_ids)
+
+        ops = (
+            [{"type": "node.remove", "node": {"id": nid}} for nid in subtree_ids]
+            + [{"type": "edge.remove", "edge": {"id": eid}} for eid in edge_ids]
+        )
+        await self._broadcast(board_id=board_id, ops=ops)
+        return {
+            "deleted": {"nodes": len(subtree_ids), "edges": len(edge_ids)},
+            "node_ids": subtree_ids,
+            "edge_ids": edge_ids,
+        }
+
     async def change_note_kind(
         self,
         *,

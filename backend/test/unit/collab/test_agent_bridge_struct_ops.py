@@ -42,12 +42,13 @@ class _MemGraphStore:
     def __init__(self) -> None:
         """Init."""
         self.notes: dict[str, Note] = {}
+        self.links: dict[str, Any] = {}
 
     async def get_graph(
         self, graph_uid: str, root_id: str | None = None,
     ) -> _FakeGraph:
-        """Return notes scoped by graph_uid (and optionally parent_id)."""
-        scoped = [
+        """Return notes + edges scoped by graph_uid (and parent_id for links)."""
+        scoped_nodes = [
             n for n in self.notes.values()
             if n.graph_uid == graph_uid
             and (
@@ -55,7 +56,18 @@ class _MemGraphStore:
                 or (root_id is not None and n.parent_id == root_id)
             )
         ]
-        return _FakeGraph(nodes=scoped)
+        # Mirror GraphStore._link_is_visible_in_scope: when root_id is
+        # None only links with parent_id is None are visible; otherwise
+        # links whose parent_id matches root_id.
+        scoped_edges = [
+            link for link in self.links.values()
+            if link.graph_uid == graph_uid
+            and (
+                (root_id is None and link.parent_id is None)
+                or (root_id is not None and link.parent_id == root_id)
+            )
+        ]
+        return _FakeGraph(nodes=scoped_nodes, edges=scoped_edges)
 
     async def get_nodes(self, node_ids: list[str]) -> list[Note]:
         """Return notes by id, preserving input order, skipping missing."""
@@ -65,6 +77,26 @@ class _MemGraphStore:
         """Store notes by id."""
         for note in nodes:
             self.notes[note.id] = note
+
+    async def add_links(self, links: list[Any]) -> None:
+        """Store links by id."""
+        for link in links:
+            self.links[link.id] = link
+
+    async def delete_links(self, link_ids: list[str]) -> None:
+        """Remove links by id."""
+        for lid in link_ids:
+            self.links.pop(lid, None)
+
+    async def delete_nodes(
+        self,
+        node_ids: list[str],
+        hard_delete: bool = True,
+        user_uid: str | None = None,
+    ) -> None:
+        """Remove the given nodes (caller already expanded descendants)."""
+        for nid in node_ids:
+            self.notes.pop(nid, None)
 
     async def patch_note(
         self, *, node_id: str, data: dict[str, Any], user_uid: str | None = None,
@@ -206,3 +238,23 @@ async def test_reparent_note_rejects_cycle(graph_store, board_id, agent_bridge):
     with pytest.raises(ValueError):
         await agent_bridge.reparent_note(
             board_id=board_id, node_id=parent.id, new_parent_id=child.id)
+
+
+@pytest.mark.asyncio
+async def test_delete_subtree_preview_then_confirm(graph_store, board_id, agent_bridge):
+    """Two-phase delete: preview reports real counts, confirm removes subtree."""
+    from topix.datatypes.note.link import Link
+    root = await _make_note(graph_store, board_id, label="R")
+    child = await _make_note(graph_store, board_id, label="C")
+    await agent_bridge.reparent_note(board_id=board_id, node_id=child.id, new_parent_id=root.id)
+    link = Link(source=root.id, target=child.id, graph_uid=board_id)
+    await agent_bridge.add_links(board_id=board_id, links=[link])
+
+    preview = await agent_bridge.delete_subtree(board_id=board_id, node_id=root.id, confirm=False)
+    assert preview["preview"]["nodes"] >= 2  # root + child
+    assert preview["preview"]["edges"] >= 1
+
+    result = await agent_bridge.delete_subtree(board_id=board_id, node_id=root.id, confirm=True)
+    assert result["deleted"]["nodes"] >= 2
+    remaining = await graph_store.get_nodes([root.id, child.id])
+    assert remaining == []
