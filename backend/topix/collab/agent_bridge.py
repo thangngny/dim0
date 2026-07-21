@@ -162,6 +162,65 @@ class AgentBoardBridge:
             ops=[{"type": "edge.remove", "edge": {"id": link_id}}],
         )
 
+    async def change_note_kind(
+        self,
+        *,
+        board_id: str,
+        node_id: str,
+        kind: str,
+        user_uid: str | None = None,
+    ) -> Note | None:
+        """Re-style a note to a research kind (shape + color + size).
+
+        Kind is not a stored Note field; the visible kind is the node's
+        shape + palette. Patches `style` (shape + canonical colors from
+        `build_research_style`) and re-fits `node_size` for the new shape.
+        Delegates the persist + `node.update` broadcast to `patch_note`.
+        """
+        from topix.agents.notes.service import get_default_note_size
+        from topix.datatypes.property import SizeProperty
+        from topix.integrations.research_meta import merge_research_metadata
+        from topix.integrations.research_style import (
+            build_research_style,
+            get_kind_visual,
+        )
+        from topix.utils.graph.text_measure import estimate_node_size
+
+        notes = await self._graph_store.get_nodes([node_id])
+        if not notes:
+            return None
+        note = notes[0]
+        if note.graph_uid != board_id:
+            raise ValueError("Note does not belong to the current board scope.")
+
+        norm = merge_research_metadata(kind, {}).normalized_kind()
+        vis = get_kind_visual(norm)
+        style = build_research_style(norm)
+
+        width, height = get_default_note_size(vis.shape)
+        body = note.content.markdown if note.content else ""
+        fitted = estimate_node_size(vis.shape, width, body, style.font_size)
+        if fitted is not None:
+            width, height = fitted
+
+        data: dict[str, Any] = {
+            "style": {
+                "type": vis.shape.value,
+                "background_color": style.background_color,
+                "stroke_color": style.stroke_color,
+                "text_color": style.text_color,
+                "roundness": style.roundness,
+            },
+            "properties": {
+                "node_size": SizeProperty(
+                    size=SizeProperty.Size(width=width, height=height)
+                ).model_dump(),
+            },
+        }
+        return await self.patch_note(
+            board_id=board_id, node_id=node_id, data=data, user_uid=user_uid,
+        )
+
     # ------------------------------------------------------------------
 
     async def _broadcast(self, *, board_id: str, ops: list[dict[str, Any]]) -> None:
