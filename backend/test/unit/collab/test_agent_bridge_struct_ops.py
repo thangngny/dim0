@@ -88,6 +88,23 @@ class _MemGraphStore:
         for lid in link_ids:
             self.links.pop(lid, None)
 
+    async def update_links(self, updates: list[tuple[str, dict]]) -> None:
+        """Deep-merge patches into stored links (mirrors GraphStore.update_links).
+
+        Used by `merge_notes` to repoint edge endpoints onto the target
+        node: `updates` is a list of `(link_id, {"source": ..., "target": ...})`.
+        """
+        for link_id, data in updates:
+            existing = self.links.get(link_id)
+            if existing is None:
+                continue
+            merged = _deep_merge(
+                existing.model_dump(exclude_none=False), data,
+            )
+            merged["id"] = link_id
+            from topix.datatypes.note.link import Link as _Link
+            self.links[link_id] = _Link.model_validate(merged)
+
     async def delete_nodes(
         self,
         node_ids: list[str],
@@ -258,3 +275,51 @@ async def test_delete_subtree_preview_then_confirm(graph_store, board_id, agent_
     assert result["deleted"]["nodes"] >= 2
     remaining = await graph_store.get_nodes([root.id, child.id])
     assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_merge_notes_folds_into_target(graph_store, board_id, agent_bridge):
+    """Two-phase merge: preview reports absorbed count, confirm folds content."""
+    a = await _make_note(graph_store, board_id, label="A", content="alpha")
+    b = await _make_note(graph_store, board_id, label="B", content="beta")
+    preview = await agent_bridge.merge_notes(
+        board_id=board_id, node_ids=[a.id, b.id], target_id=a.id, confirm=False)
+    assert preview["preview"]["absorbed"] == 1
+
+    result = await agent_bridge.merge_notes(
+        board_id=board_id, node_ids=[a.id, b.id], target_id=a.id, confirm=True)
+    assert result["deleted"]["nodes"] == 1
+    merged = (await graph_store.get_nodes([a.id]))[0]
+    assert "alpha" in merged.content.markdown and "beta" in merged.content.markdown
+    assert (await graph_store.get_nodes([b.id])) == []
+
+
+@pytest.mark.asyncio
+async def test_merge_notes_repoints_edges_and_drops_self_loops(
+    graph_store, board_id, agent_bridge,
+):
+    """Edges to absorbed nodes repoint onto target; edges between merged nodes drop."""
+    from topix.datatypes.note.link import Link
+    a = await _make_note(graph_store, board_id, label="A", content="alpha")
+    b = await _make_note(graph_store, board_id, label="B", content="beta")
+    c = await _make_note(graph_store, board_id, label="C", content="gamma")
+    # c -> b (repoints to c -> a), a -> b (self-loop after repoint: a -> a, dropped)
+    c_to_b = Link(source=c.id, target=b.id, graph_uid=board_id)
+    a_to_b = Link(source=a.id, target=b.id, graph_uid=board_id)
+    await agent_bridge.add_links(board_id=board_id, links=[c_to_b, a_to_b])
+
+    preview = await agent_bridge.merge_notes(
+        board_id=board_id, node_ids=[a.id, b.id], target_id=a.id, confirm=False)
+    assert preview["preview"]["absorbed"] == 1
+    assert preview["preview"]["edges_repointed"] == 1  # c->b becomes c->a
+    assert preview["preview"]["edges_dropped"] == 1    # a->b becomes a->a
+
+    result = await agent_bridge.merge_notes(
+        board_id=board_id, node_ids=[a.id, b.id], target_id=a.id, confirm=True)
+    assert result["deleted"]["nodes"] == 1
+    assert result["repointed"] == 1
+    # b gone; c->a link persists (repointed), self-loop gone.
+    assert (await graph_store.get_nodes([b.id])) == []
+    surviving_link_ids = {link.id for link in graph_store.links.values()}
+    assert c_to_b.id in surviving_link_ids  # repointed in-place
+    assert a_to_b.id not in surviving_link_ids  # self-loop dropped

@@ -306,6 +306,107 @@ class AgentBoardBridge:
             board_id=board_id, node_id=node_id, data=data, user_uid=user_uid,
         )
 
+    async def merge_notes(
+        self,
+        *,
+        board_id: str,
+        node_ids: list[str],
+        target_id: str,
+        confirm: bool = False,
+        user_uid: str | None = None,
+    ) -> dict:
+        """Fold several notes into one target note.
+
+        Appends each non-target note's content to the target, repoints
+        edges that referenced a non-target note onto the target, then
+        deletes the absorbed notes and any now-duplicate (self-loop)
+        edges. Two-phase via `confirm`.
+        """
+        if not node_ids or target_id not in node_ids:
+            raise ValueError("node_ids must be non-empty and include target_id.")
+        others = [nid for nid in node_ids if nid != target_id]
+        if not others:
+            raise ValueError("Nothing to merge — target is the only node given.")
+
+        notes = await self._graph_store.get_nodes(node_ids)
+        by_id = {n.id: n for n in notes}
+        if target_id not in by_id:
+            raise ValueError(f"Target {target_id} not found.")
+        for nid in node_ids:
+            if nid not in by_id or by_id[nid].graph_uid != board_id:
+                raise ValueError(f"Node {nid} not in the current board scope.")
+
+        graph = await self._graph_store.get_graph(board_id)
+        edges = graph.edges if graph else []
+        # Edges that touch an absorbed node (to repoint or delete).
+        affected = [e for e in edges if e.source in others or e.target in others]
+        # Edges that would become self-loops on the target after repoint.
+        # Mirrors the repoint: an endpoint in `others` becomes `target_id`,
+        # an endpoint not in `others` stays itself.
+        self_loop_ids = [
+            e.id for e in affected
+            if (target_id if e.source in others else e.source)
+               == (target_id if e.target in others else e.target)
+        ]
+        repoint = [e for e in affected if e.id not in self_loop_ids]
+
+        if not confirm:
+            return {
+                "preview": {
+                    "absorbed": len(others),
+                    "edges_repointed": len(repoint),
+                    "edges_dropped": len(self_loop_ids),
+                },
+            }
+
+        # 1) Append absorbed content into the target.
+        target = by_id[target_id]
+        base = target.content.markdown if target.content else ""
+        appended = "\n\n---\n\n".join(
+            [base]
+            + [(by_id[nid].content.markdown if by_id[nid].content else "") for nid in others]
+        ).strip()
+        data: dict[str, Any] = {"content": {"markdown": appended}}
+        if target.label and target.label.markdown:
+            # Re-stamp the existing label so the deep-merge doesn't drop it.
+            data["label"] = {"markdown": target.label.markdown}
+        await self.patch_note(
+            board_id=board_id, node_id=target_id, data=data, user_uid=user_uid,
+        )
+
+        # 2) Repoint edges onto the target; broadcast edge.update per edge.
+        update_calls: list[tuple[str, dict]] = []
+        ops: list[dict[str, Any]] = []
+        for e in repoint:
+            new_source = target_id if e.source in others else e.source
+            new_target = target_id if e.target in others else e.target
+            update_calls.append((e.id, {"source": new_source, "target": new_target}))
+            ops.append({
+                "type": "edge.update",
+                "id": e.id,
+                "patch": {
+                    "source": {"nodeId": new_source},
+                    "target": {"nodeId": new_target},
+                },
+                "prev": {},
+            })
+        if update_calls:
+            await self._graph_store.update_links(updates=update_calls)
+
+        # 3) Drop edges that would self-loop + delete absorbed notes.
+        if self_loop_ids:
+            await self._graph_store.delete_links(link_ids=self_loop_ids)
+        await self._graph_store.delete_nodes(node_ids=others, user_uid=user_uid)
+
+        ops += [{"type": "edge.remove", "edge": {"id": eid}} for eid in self_loop_ids]
+        ops += [{"type": "node.remove", "node": {"id": nid}} for nid in others]
+        await self._broadcast(board_id=board_id, ops=ops)
+        return {
+            "deleted": {"nodes": len(others), "edges": len(self_loop_ids)},
+            "repointed": len(repoint),
+            "target_id": target_id,
+        }
+
     # ------------------------------------------------------------------
 
     async def _broadcast(self, *, board_id: str, ops: list[dict[str, Any]]) -> None:
