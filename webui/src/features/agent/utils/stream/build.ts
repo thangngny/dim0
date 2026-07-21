@@ -9,7 +9,13 @@ import type {
   MemorySearchOutput,
   ToolOutput,
   Annotation,
-  UrlAnnotation
+  UrlAnnotation,
+  ChangeNoteKindOutput,
+  ReparentNoteOutput,
+  DeleteSubtreeOutput,
+  MergeNotesOutput,
+  SplitNoteOutput,
+  RelayoutOutput,
 } from "../../types/tool-outputs"
 
 type BlockKind = "raw" | "tools" | null
@@ -87,6 +93,24 @@ const makeToolOutput = (acc: StepAccum): ToolOutput => {
       noteType: "rectangle",
       parentId: null,
     }
+  }
+  if (acc.name === "change_note_kind") {
+    return { type: "change_note_kind", noteId: "", graphUid: "", kind: "" }
+  }
+  if (acc.name === "reparent_note") {
+    return { type: "reparent_note", noteId: "", graphUid: "", parentId: null }
+  }
+  if (acc.name === "delete_subtree") {
+    return { type: "delete_subtree", graphUid: "", deletedNodes: 0, deletedEdges: 0 }
+  }
+  if (acc.name === "merge_notes") {
+    return { type: "merge_notes", targetId: "", graphUid: "", absorbed: 0 }
+  }
+  if (acc.name === "split_note") {
+    return { type: "split_note", graphUid: "", createdIds: [], originalDeleted: false }
+  }
+  if (acc.name === "relayout_board") {
+    return { type: "relayout_board", graphUid: "", moved: 0, mode: "default" }
   }
 
   return ""
@@ -429,6 +453,85 @@ export function extractStepDescription(step: ReasoningStep): { reasoning: string
       message: output.label
         ? `Updated note "${output.label}" as ${typeLabel}.`
         : `Updated note as ${typeLabel}.`,
+      title: getToolTitle(step.name),
+      input
+    }
+  }
+
+  if (step.name === "change_note_kind" && typeof step.output !== "string") {
+    if (step.state === "started") {
+      return { reasoning: step.thought || "", message: "Changing note kind…", title: getToolTitle(step.name), input }
+    }
+    const output = step.output as ChangeNoteKindOutput
+    return {
+      reasoning: step.thought || "",
+      message: `Changed note ${output.noteId} to kind "${output.kind}".`,
+      title: getToolTitle(step.name),
+      input
+    }
+  }
+
+  if (step.name === "reparent_note" && typeof step.output !== "string") {
+    if (step.state === "started") {
+      return { reasoning: step.thought || "", message: "Reparenting note…", title: getToolTitle(step.name), input }
+    }
+    const output = step.output as ReparentNoteOutput
+    const dest = output.parentId ? `under note ${output.parentId}` : "to board root"
+    return {
+      reasoning: step.thought || "",
+      message: `Moved note ${output.noteId} ${dest}.`,
+      title: getToolTitle(step.name),
+      input
+    }
+  }
+
+  if (step.name === "delete_subtree" && typeof step.output !== "string") {
+    if (step.state === "started") {
+      return { reasoning: step.thought || "", message: "Deleting subtree…", title: getToolTitle(step.name), input }
+    }
+    const output = step.output as DeleteSubtreeOutput
+    return {
+      reasoning: step.thought || "",
+      message: `Deleted subtree: ${output.deletedNodes} nodes, ${output.deletedEdges} edges.`,
+      title: getToolTitle(step.name),
+      input
+    }
+  }
+
+  if (step.name === "merge_notes" && typeof step.output !== "string") {
+    if (step.state === "started") {
+      return { reasoning: step.thought || "", message: "Merging notes…", title: getToolTitle(step.name), input }
+    }
+    const output = step.output as MergeNotesOutput
+    return {
+      reasoning: step.thought || "",
+      message: `Merged ${output.absorbed} note(s) into ${output.targetId}.`,
+      title: getToolTitle(step.name),
+      input
+    }
+  }
+
+  if (step.name === "split_note" && typeof step.output !== "string") {
+    if (step.state === "started") {
+      return { reasoning: step.thought || "", message: "Splitting note…", title: getToolTitle(step.name), input }
+    }
+    const output = step.output as SplitNoteOutput
+    return {
+      reasoning: step.thought || "",
+      message: `Split into ${output.createdIds.length} note(s) (original ${output.originalDeleted ? "deleted" : "kept"}).`,
+      title: getToolTitle(step.name),
+      input
+    }
+  }
+
+  if (step.name === "relayout_board" && typeof step.output !== "string") {
+    if (step.state === "started") {
+      return { reasoning: step.thought || "", message: "Relaying out board…", title: getToolTitle(step.name), input }
+    }
+    const output = step.output as RelayoutOutput
+    return {
+      reasoning: step.thought || "",
+      message: `Relayout (${output.mode}): moved ${output.moved} node(s).`,
       title: getToolTitle(step.name),
       input
     }

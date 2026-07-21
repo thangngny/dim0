@@ -4,7 +4,18 @@ import { Link, useSearch } from "@tanstack/react-router"
 import type { ToolCallStep } from "../../types/stream"
 import { ToolNameIcon } from "../../types/stream"
 import { extractStepDescription, getWebSearchUrls } from "../../utils/stream/build"
-import type { CodeInterpreterOutput, CreateNoteOutput, EditNoteOutput, WriteNoteOutput } from "../../types/tool-outputs"
+import type {
+  ChangeNoteKindOutput,
+  CodeInterpreterOutput,
+  CreateNoteOutput,
+  DeleteSubtreeOutput,
+  EditNoteOutput,
+  MergeNotesOutput,
+  RelayoutOutput,
+  ReparentNoteOutput,
+  SplitNoteOutput,
+  WriteNoteOutput,
+} from "../../types/tool-outputs"
 import type { ToolStepWidgetAttachment } from "./tool-step-widgets"
 import { MiniLinkCard } from "../link-preview"
 import { cn } from "@/lib/utils"
@@ -115,6 +126,99 @@ export const NoteToolResult = ({
       </div>
     </div>
   )
+}
+
+
+/** Union of the six structural tool outputs rendered by `StructToolResult`. */
+type StructToolOutput =
+  | ChangeNoteKindOutput
+  | ReparentNoteOutput
+  | DeleteSubtreeOutput
+  | MergeNotesOutput
+  | SplitNoteOutput
+  | RelayoutOutput
+
+
+/** Resolves the affected note id (if any) for a struct tool output. */
+const structNoteId = (output: StructToolOutput): string | null => {
+  switch (output.type) {
+    case "change_note_kind":
+    case "reparent_note":
+      return output.noteId
+    case "merge_notes":
+      return output.targetId
+    case "delete_subtree":
+    case "split_note":
+    case "relayout_board":
+      return null
+  }
+}
+
+
+/**
+ * Renders a compact summary card for a structural tool result, with a
+ * link to the affected note on the board when applicable. Mirrors the
+ * `NoteToolResult` card shape but for the six structural ops.
+ */
+export const StructToolResult = ({
+  output,
+  chatId,
+  rootId,
+}: {
+  output: StructToolOutput
+  chatId?: string
+  rootId?: string
+}) => {
+  const boardId = output.graphUid
+  const noteId = structNoteId(output)
+
+  return (
+    <div className='w-full rounded-lg border border-border bg-muted p-3'>
+      <div className='flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground'>
+        <span>{output.type.replace(/_/g, " ")}</span>
+        {noteId && (
+          <Link
+            to='/boards/$id'
+            params={{ id: boardId }}
+            search={{
+              center_around: noteId,
+              current_chat_id: chatId || undefined,
+              root_id: rootId || undefined,
+            }}
+            className='inline-flex items-center gap-1 rounded-md p-1 transition-colors hover:bg-background/70 hover:text-foreground'
+            title='Open on board'
+            aria-label='Open on board'
+          >
+            <ExternalLinkIcon className='size-3.5' />
+          </Link>
+        )}
+      </div>
+      <div className='mt-1 text-sm text-card-foreground whitespace-pre-line'>
+        <span className='font-medium'>{describeStructOutput(output)}</span>
+      </div>
+    </div>
+  )
+}
+
+
+/** Builds a human-readable summary for a struct tool output. */
+const describeStructOutput = (output: StructToolOutput): string => {
+  switch (output.type) {
+    case "change_note_kind":
+      return `Changed note to kind "${output.kind}"`
+    case "reparent_note":
+      return output.parentId
+        ? `Moved note under ${output.parentId}`
+        : "Moved note to board root"
+    case "delete_subtree":
+      return `Deleted ${output.deletedNodes} nodes, ${output.deletedEdges} edges`
+    case "merge_notes":
+      return `Merged ${output.absorbed} note(s) into target`
+    case "split_note":
+      return `Split into ${output.createdIds.length} note(s)`
+    case "relayout_board":
+      return `Relayout (${output.mode}): moved ${output.moved} node(s)`
+  }
 }
 
 
@@ -249,6 +353,16 @@ export const ToolStepRow = ({
   )
     ? step.output as WriteNoteOutput | CreateNoteOutput | EditNoteOutput
     : null
+  const structToolOutput = (
+    step.name === "change_note_kind" ||
+    step.name === "reparent_note" ||
+    step.name === "delete_subtree" ||
+    step.name === "merge_notes" ||
+    step.name === "split_note" ||
+    step.name === "relayout_board"
+  ) && typeof step.output !== "string"
+    ? step.output as ChangeNoteKindOutput | ReparentNoteOutput | DeleteSubtreeOutput | MergeNotesOutput | SplitNoteOutput | RelayoutOutput
+    : null
 
   const sources = useMemo(() => {
     if (!viewMore || isStreaming) return []
@@ -272,6 +386,7 @@ export const ToolStepRow = ({
     !!input ||
     !!codeInterpreterOutput ||
     !!noteToolOutput ||
+    !!structToolOutput ||
     sources.length > 0
   )
 
@@ -333,6 +448,9 @@ export const ToolStepRow = ({
               )}
               {noteToolOutput && (
                 <NoteToolResult output={noteToolOutput} chatId={chatId} rootId={rootId} />
+              )}
+              {structToolOutput && (
+                <StructToolResult output={structToolOutput} chatId={chatId} rootId={rootId} />
               )}
               {sources.length > 0 && (
                 <div className='w-full flex flex-row flex-wrap items-start gap-1 mt-2'>

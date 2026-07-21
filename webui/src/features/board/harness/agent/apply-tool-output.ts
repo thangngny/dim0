@@ -7,9 +7,15 @@ import {
 } from "@canvas-harness/core"
 import { getBoardLink, getBoardNote } from "@/features/board/api/get-board"
 import type {
+  ChangeNoteKindOutput,
   CreateNoteOutput,
+  DeleteSubtreeOutput,
   EditNoteOutput,
   LinkNotesOutput,
+  MergeNotesOutput,
+  RelayoutOutput,
+  ReparentNoteOutput,
+  SplitNoteOutput,
   WriteNoteOutput,
 } from "@/features/agent/types/tool-outputs"
 import type { Link } from "@/features/board/types/link"
@@ -19,6 +25,16 @@ import { noteToNode } from "../convert/note-to-node"
 
 
 export type NoteToolOutput = CreateNoteOutput | WriteNoteOutput | EditNoteOutput
+
+
+/** Union of the six structural tool outputs handled by this module. */
+export type StructToolOutput =
+  | ChangeNoteKindOutput
+  | ReparentNoteOutput
+  | DeleteSubtreeOutput
+  | MergeNotesOutput
+  | SplitNoteOutput
+  | RelayoutOutput
 
 
 /** Apply a list of ops to the store as a single `remote`-origin batch. */
@@ -133,4 +149,147 @@ export const applyLinkOutput = async (
   applyRemoteBatch(store, [op])
 
   return output.linkId
+}
+
+
+/**
+ * Apply a `change_note_kind` structural output. The mutation is broadcast
+ * to peers via the collab WS; for the acting client we re-fetch the fresh
+ * note and apply a `node.update` so the canvas reflects the new kind
+ * without waiting for the round-trip. Returns null when skipped.
+ */
+export const applyChangeKindOutput = async (
+  store: CanvasStore,
+  queryClient: QueryClient,
+  activeBoardId: string,
+  rootId: string | null,
+  output: ChangeNoteKindOutput,
+): Promise<ApplyNoteResult | null> => {
+  if (output.graphUid !== activeBoardId || !output.noteId) return null
+  return applyNoteOutput(store, queryClient, activeBoardId, rootId, {
+    type: "write_note",
+    action: "rewritten",
+    noteId: output.noteId,
+    graphUid: output.graphUid,
+    label: null,
+    noteType: "rectangle",
+    parentId: null,
+  } as WriteNoteOutput)
+}
+
+
+/**
+ * Apply a `reparent_note` structural output. Re-fetches the fresh note
+ * (its parentId changed) and applies a `node.update` / `node.add` /
+ * `node.remove` via `applyNoteOutput` depending on whether the note is
+ * now visible on the current canvas. Peers receive the move via WS.
+ */
+export const applyReparentNoteOutput = async (
+  store: CanvasStore,
+  queryClient: QueryClient,
+  activeBoardId: string,
+  rootId: string | null,
+  output: ReparentNoteOutput,
+): Promise<ApplyNoteResult | null> => {
+  if (output.graphUid !== activeBoardId || !output.noteId) return null
+  return applyNoteOutput(store, queryClient, activeBoardId, rootId, {
+    type: "write_note",
+    action: "rewritten",
+    noteId: output.noteId,
+    graphUid: output.graphUid,
+    label: null,
+    noteType: "rectangle",
+    parentId: output.parentId,
+  } as WriteNoteOutput)
+}
+
+
+/**
+ * Apply a `delete_subtree` structural output. The output carries only
+ * counts (not ids), so the actual node/edge removal is delivered to all
+ * clients — including the acting one — via the collab WS path. This
+ * function is a no-op that signals "handled by WS".
+ */
+export const applyDeleteSubtreeOutput = async (
+  _store: CanvasStore,
+  _queryClient: QueryClient,
+  _activeBoardId: string,
+  _rootId: string | null,
+  output: DeleteSubtreeOutput,
+): Promise<ApplyNoteResult | null> => {
+  if (output.graphUid !== _activeBoardId) return null
+  return null
+}
+
+
+/**
+ * Apply a `merge_notes` structural output. The surviving target note is
+ * re-fetched and updated on the canvas; the absorbed notes are removed by
+ * the collab WS path. Returns null when skipped.
+ */
+export const applyMergeNotesOutput = async (
+  store: CanvasStore,
+  queryClient: QueryClient,
+  activeBoardId: string,
+  rootId: string | null,
+  output: MergeNotesOutput,
+): Promise<ApplyNoteResult | null> => {
+  if (output.graphUid !== activeBoardId || !output.targetId) return null
+  return applyNoteOutput(store, queryClient, activeBoardId, rootId, {
+    type: "write_note",
+    action: "rewritten",
+    noteId: output.targetId,
+    graphUid: output.graphUid,
+    label: null,
+    noteType: "rectangle",
+    parentId: null,
+  } as WriteNoteOutput)
+}
+
+
+/**
+ * Apply a `split_note` structural output. Each newly created note is
+ * fetched and added to the canvas via `applyNoteOutput`. When the
+ * original note was deleted, the collab WS path delivers its removal.
+ * Returns the last created note's result (or null when skipped).
+ */
+export const applySplitNoteOutput = async (
+  store: CanvasStore,
+  queryClient: QueryClient,
+  activeBoardId: string,
+  rootId: string | null,
+  output: SplitNoteOutput,
+): Promise<ApplyNoteResult | null> => {
+  if (output.graphUid !== activeBoardId || output.createdIds.length === 0) return null
+  let last: ApplyNoteResult | null = null
+  for (const createdId of output.createdIds) {
+    const result = await applyNoteOutput(store, queryClient, activeBoardId, rootId, {
+      type: "create_note",
+      noteId: createdId,
+      graphUid: output.graphUid,
+      label: null,
+      noteType: "rectangle",
+      parentId: null,
+    } as CreateNoteOutput)
+    if (result) last = result
+  }
+  return last
+}
+
+
+/**
+ * Apply a `relayout_board` structural output. The new positions are
+ * broadcast to all clients via the collab WS path; this function is a
+ * no-op that signals "handled by WS". Returns null when the output is
+ * for a different board.
+ */
+export const applyRelayoutOutput = async (
+  _store: CanvasStore,
+  _queryClient: QueryClient,
+  _activeBoardId: string,
+  _rootId: string | null,
+  output: RelayoutOutput,
+): Promise<ApplyNoteResult | null> => {
+  if (output.graphUid !== _activeBoardId) return null
+  return null
 }

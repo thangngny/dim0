@@ -110,6 +110,12 @@ export type ToolName =
   | "edit_note"
   | "get_note"
   | "link_notes"
+  | "change_note_kind"
+  | "reparent_note"
+  | "delete_subtree"
+  | "merge_notes"
+  | "split_note"
+  | "relayout_board"
   | "outline_generator"
   | "web_collector"
   | "synthesizer"
@@ -136,6 +142,12 @@ export const ToolNameDescription: Record<ToolName, string> = {
   edit_note: "Edit note",
   get_note: "Read note",
   link_notes: "Link notes",
+  change_note_kind: "Change note kind",
+  reparent_note: "Reparent note",
+  delete_subtree: "Delete subtree",
+  merge_notes: "Merge notes",
+  split_note: "Split note",
+  relayout_board: "Relayout board",
   outline_generator: "Generate outline",
   web_collector: "Collect web content",
   synthesizer: "Synthesize response",
@@ -167,6 +179,12 @@ export const ToolNameIcon: Record<string, AppIconComponent> = {
   edit_note: EditNoteIcon,
   get_note: ReadNoteIcon,
   link_notes: LinkIcon,
+  change_note_kind: EditNoteIcon,
+  reparent_note: NoteIcon,
+  delete_subtree: NoteIcon,
+  merge_notes: NoteIcon,
+  split_note: NoteIcon,
+  relayout_board: NoteIcon,
   image_description: ImageGenerationIcon,
   topic_illustrator: ImageGenerationIcon,
   image_generation: ImageGenerationIcon,

@@ -14,9 +14,15 @@ import { trimResponseAnnotations } from "../utils/annotations"
 import { useBoardAppStore } from "@/features/board/harness/store/board-app-store"
 import { getAgentBridge } from "@/features/board/harness/agent/agent-bridge"
 import type {
+  ChangeNoteKindOutput,
   CreateNoteOutput,
+  DeleteSubtreeOutput,
   EditNoteOutput,
   LinkNotesOutput,
+  MergeNotesOutput,
+  RelayoutOutput,
+  ReparentNoteOutput,
+  SplitNoteOutput,
   WriteNoteOutput,
 } from "../types/tool-outputs"
 import { isReasoningTextStep, isToolCallStep, normalizeReasoningSteps } from "../types/stream"
@@ -250,8 +256,13 @@ export const useSendMessage = () => {
         const reasoningSteps = completedMessage?.properties.reasoning?.reasoning ?? []
         const noteToolOutputs = collectNoteToolOutputs(reasoningSteps)
         const linkToolOutputs = collectLinkToolOutputs(reasoningSteps)
+        const structToolOutputs = collectStructToolOutputs(reasoningSteps)
 
-        if (noteToolOutputs.length > 0 || linkToolOutputs.length > 0) {
+        if (
+          noteToolOutputs.length > 0
+          || linkToolOutputs.length > 0
+          || structToolOutputs.length > 0
+        ) {
           const activeBoardId = useBoardAppStore.getState().boardId
           // Apply outputs through the canvas-harness bridge: re-fetches
           // each note/link from the server (canonical state), updates
@@ -271,6 +282,35 @@ export const useSendMessage = () => {
             }
             for (const output of linkToolOutputs) {
               await harnessBridge.applyLinkOutput(output)
+            }
+            // Apply the six structural tool outputs. Destructive ops
+            // (delete_subtree / relayout_board) are no-ops here — the
+            // collab WS path delivers those mutations to all clients.
+            for (const output of structToolOutputs) {
+              switch (output.type) {
+                case "change_note_kind":
+                  await harnessBridge.applyChangeKindOutput(output)
+                  break
+                case "reparent_note":
+                  await harnessBridge.applyReparentNoteOutput(output)
+                  break
+                case "delete_subtree":
+                  await harnessBridge.applyDeleteSubtreeOutput(output)
+                  break
+                case "merge_notes":
+                  await harnessBridge.applyMergeNotesOutput(output)
+                  break
+                case "split_note": {
+                  const result = await harnessBridge.applySplitNoteOutput(output)
+                  if (result?.created && result.onCanvas) {
+                    createdNoteIds.push(result.noteId)
+                  }
+                  break
+                }
+                case "relayout_board":
+                  await harnessBridge.applyRelayoutOutput(output)
+                  break
+              }
             }
 
             if (
@@ -348,6 +388,18 @@ const sanitizeToolOutput = (output: ToolOutput): ToolOutput => {
       return { type: "display_image_search_widget", query: "", images: [] }
     case "image_generation":
       return { type: "image_generation", imageUrls: [] }
+    case "change_note_kind":
+      return { type: "change_note_kind", noteId: "", graphUid: "", kind: "" }
+    case "reparent_note":
+      return { type: "reparent_note", noteId: "", graphUid: "", parentId: null }
+    case "delete_subtree":
+      return { type: "delete_subtree", graphUid: "", deletedNodes: 0, deletedEdges: 0 }
+    case "merge_notes":
+      return { type: "merge_notes", targetId: "", graphUid: "", absorbed: 0 }
+    case "split_note":
+      return { type: "split_note", graphUid: "", createdIds: [], originalDeleted: false }
+    case "relayout_board":
+      return { type: "relayout_board", graphUid: "", moved: 0, mode: "default" }
     default:
       return output
   }
@@ -371,6 +423,36 @@ const collectLinkToolOutputs = (steps: ReasoningStep[]): LinkNotesOutput[] =>
     if (!isToolCallStep(step)) return []
     if (step.name === "link_notes" && typeof step.output !== "string") {
       return [step.output as LinkNotesOutput]
+    }
+    return []
+  })
+
+
+const STRUCT_TOOL_NAMES = [
+  "change_note_kind",
+  "reparent_note",
+  "delete_subtree",
+  "merge_notes",
+  "split_note",
+  "relayout_board",
+] as const
+
+
+/**
+ * Collects the six structural tool outputs from the assistant reasoning
+ * steps. Each output is dispatched to its corresponding AgentBridge
+ * apply method in the post-stream block.
+ */
+const collectStructToolOutputs = (
+  steps: ReasoningStep[],
+): Array<ChangeNoteKindOutput | ReparentNoteOutput | DeleteSubtreeOutput | MergeNotesOutput | SplitNoteOutput | RelayoutOutput> =>
+  steps.flatMap((step) => {
+    if (!isToolCallStep(step)) return []
+    if (
+      (STRUCT_TOOL_NAMES as readonly string[]).includes(step.name)
+      && typeof step.output !== "string"
+    ) {
+      return [step.output as ChangeNoteKindOutput | ReparentNoteOutput | DeleteSubtreeOutput | MergeNotesOutput | SplitNoteOutput | RelayoutOutput]
     }
     return []
   })

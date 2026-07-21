@@ -117,6 +117,61 @@ export interface ImageGenerationOutput {
   imageUrls: string[]
 }
 
+
+/** Output from the change-note-kind structural tool. */
+export interface ChangeNoteKindOutput {
+  type: "change_note_kind"
+  noteId: string
+  graphUid: string
+  kind: string
+}
+
+
+/** Output from the reparent-note structural tool. */
+export interface ReparentNoteOutput {
+  type: "reparent_note"
+  noteId: string
+  graphUid: string
+  parentId: string | null
+}
+
+
+/** Output from the delete-subtree structural tool. */
+export interface DeleteSubtreeOutput {
+  type: "delete_subtree"
+  graphUid: string
+  deletedNodes: number
+  deletedEdges: number
+}
+
+
+/** Output from the merge-notes structural tool. */
+export interface MergeNotesOutput {
+  type: "merge_notes"
+  targetId: string
+  graphUid: string
+  absorbed: number
+}
+
+
+/** Output from the split-note structural tool. */
+export interface SplitNoteOutput {
+  type: "split_note"
+  graphUid: string
+  createdIds: string[]
+  originalDeleted: boolean
+}
+
+
+/** Output from the relayout-board structural tool. */
+export interface RelayoutOutput {
+  type: "relayout_board"
+  graphUid: string
+  moved: number
+  mode: string
+}
+
+
 export type ToolOutput =
   | WebSearchOutput
   | MemorySearchOutput
@@ -130,4 +185,10 @@ export type ToolOutput =
   | StockWidgetOutput
   | ImageSearchWidgetOutput
   | ImageGenerationOutput
+  | ChangeNoteKindOutput
+  | ReparentNoteOutput
+  | DeleteSubtreeOutput
+  | MergeNotesOutput
+  | SplitNoteOutput
+  | RelayoutOutput
   | string

@@ -7,7 +7,16 @@ import { noteToNode } from "../convert/note-to-node"
 import { applyStyleMemory } from "./use-create-handlers"
 import { createHarnessTextareaEditor } from "./text-editor-adapter"
 import { setAgentBridge } from "../agent/agent-bridge"
-import { applyLinkOutput, applyNoteOutput } from "../agent/apply-tool-output"
+import {
+  applyChangeKindOutput,
+  applyDeleteSubtreeOutput,
+  applyLinkOutput,
+  applyMergeNotesOutput,
+  applyNoteOutput,
+  applyRelayoutOutput,
+  applyReparentNoteOutput,
+  applySplitNoteOutput,
+} from "../agent/apply-tool-output"
 import { useHarnessApplyMindMap } from "../agent/use-harness-apply-mindmap"
 import { setCanvasStoreRef } from "../canvas-store-ref"
 import {
@@ -129,6 +138,18 @@ export function HarnessCanvas() {
         applyNoteOutput(store, queryClient, boardId, rootId, output),
       applyLinkOutput: (output) =>
         applyLinkOutput(store, boardId, output),
+      applyChangeKindOutput: (output) =>
+        applyChangeKindOutput(store, queryClient, boardId, rootId, output),
+      applyReparentNoteOutput: (output) =>
+        applyReparentNoteOutput(store, queryClient, boardId, rootId, output),
+      applyDeleteSubtreeOutput: (output) =>
+        applyDeleteSubtreeOutput(store, queryClient, boardId, rootId, output),
+      applyMergeNotesOutput: (output) =>
+        applyMergeNotesOutput(store, queryClient, boardId, rootId, output),
+      applySplitNoteOutput: (output) =>
+        applySplitNoteOutput(store, queryClient, boardId, rootId, output),
+      applyRelayoutOutput: (output) =>
+        applyRelayoutOutput(store, queryClient, boardId, rootId, output),
     })
     return () => setAgentBridge(null)
   }, [store, queryClient, boardId, rootId])
