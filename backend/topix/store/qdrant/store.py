@@ -23,6 +23,7 @@ from qdrant_client.models import (
 )
 
 from topix.config.config import Config, QdrantConfig
+from topix.config import catalog
 from topix.datatypes.resource import Resource, dict_to_embeddable
 from topix.nlp.embed import OpenAIEmbedder
 from topix.store.qdrant.utils import (
@@ -74,6 +75,8 @@ class ContentStore:
     @classmethod
     def from_config(cls):
         """Create an instance of QdrantStore from configuration."""
+        from topix.nlp.embed import OllamaEmbedder  # local import to avoid circularity
+
         config: Config = Config.instance()
         qdrant_config: QdrantConfig = config.run.databases.qdrant
         collection = qdrant_config.collection
@@ -84,7 +87,15 @@ class ContentStore:
             https=qdrant_config.https,
             api_key=qdrant_config.api_key.get_secret_value() if qdrant_config.api_key else None,
         )
-        embedder = OpenAIEmbedder.from_config()
+
+        resolved = catalog.available_embedding()
+        if resolved is not None and resolved.provider == "ollama":
+            embedder = OllamaEmbedder(
+                model=resolved.model,
+                dimensions=resolved.dim or OllamaEmbedder.DEFAULT_DIMENSIONS,
+            )
+        else:
+            embedder = OpenAIEmbedder.from_config()
 
         return cls(
             qdrant_client=qdrant_client, embedder=embedder, collection=collection

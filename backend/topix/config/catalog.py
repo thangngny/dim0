@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 MODELS_FILEPATH = Path(__file__).parent.parent / "models.yml"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 NO_LLM_ERROR = (
-    "No LLM API available. Set a provider key (e.g. OPENAI_API_KEY or OPENROUTER_API_KEY)."
+    "No LLM API available. Set a provider key "
+    "(e.g. OLLAMA_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY)."
 )
 
 
@@ -250,7 +251,8 @@ def openai_compatible_client(resolved: Resolved):
     """Build an OpenAI-compatible AsyncOpenAI client for a resolved route.
 
     Supports the OpenAI and OpenRouter providers (both speak the OpenAI API);
-    returns None for providers that are not OpenAI-API-compatible.
+    returns None for providers that are not OpenAI-API-compatible (e.g. ollama,
+    which uses its own /api/embed endpoint handled by OllamaEmbedder).
     """
     from openai import AsyncOpenAI
 
@@ -258,4 +260,5 @@ def openai_compatible_client(resolved: Resolved):
         return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     if resolved.provider == "openrouter":
         return AsyncOpenAI(api_key=os.getenv("OPENROUTER_API_KEY"), base_url=OPENROUTER_BASE_URL)
+    # "ollama" provider — not OpenAI-compatible for embeddings; handled by OllamaEmbedder
     return None

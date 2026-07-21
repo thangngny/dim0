@@ -7,6 +7,8 @@ export interface FloatingAssistantProps {
   boardId: string
   currentChatId?: string
   onOpenFullSheet: () => void
+  initialDraft?: string | null
+  onDraftConsumed?: () => void
 }
 
 
@@ -20,10 +22,17 @@ export const FloatingAssistant = ({
   boardId,
   currentChatId,
   onOpenFullSheet,
+  initialDraft = null,
+  onDraftConsumed,
 }: FloatingAssistantProps) => {
   return (
     <ChatProvider initialChatId={currentChatId}>
-      <FloatingIsland boardId={boardId} onOpenFullSheet={onOpenFullSheet} />
+      <FloatingIsland
+        boardId={boardId}
+        onOpenFullSheet={onOpenFullSheet}
+        initialDraft={initialDraft}
+        onDraftConsumed={onDraftConsumed}
+      />
       <AnswerCard onOpenFullSheet={onOpenFullSheet} />
     </ChatProvider>
   )

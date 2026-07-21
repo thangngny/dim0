@@ -9,6 +9,9 @@ interface CopilotSheetProps {
   boardId?: string
   currentChatId?: string
   onOpenFullChat: (chatId?: string) => void
+  /** Prefill chat composer (research handoff). */
+  initialDraft?: string | null
+  onDraftConsumed?: () => void
 }
 
 /**
@@ -21,6 +24,8 @@ export function CopilotSheet({
   boardId,
   currentChatId,
   onOpenFullChat,
+  initialDraft = null,
+  onDraftConsumed,
 }: CopilotSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange} modal={false} disablePointerDismissal>
@@ -73,6 +78,8 @@ export function CopilotSheet({
               showHistoricalChats
               chatId={currentChatId}
               enableSelectionContext
+              initialDraft={initialDraft}
+              onDraftConsumed={onDraftConsumed}
             />
           ) : open ? (
             <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">

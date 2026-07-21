@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "dim0": {
+      "command": "python3",
+      "args": ["-m", "topix.integrations.dim0_mcp.server"],
+      "cwd": "/path/to/dim0/backend",
+      "env": {
+        "DIM0_BASE_URL": "http://localhost:8899",
+        "DIM0_INTEGRATION_TOKEN": "YOUR_DIM0_INTEGRATION_TOKEN_HERE",
+        "DIM0_DEFAULT_BOARD_ID": "YOUR_BOARD_ID_HERE",
+        "PYTHONPATH": "/path/to/dim0/backend"
+      }
+    }
+  }
+}

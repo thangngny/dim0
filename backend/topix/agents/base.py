@@ -1,6 +1,7 @@
 """Base class for agent managers in the Dim0 application."""
 
 import logging
+import os
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,40 @@ litellm.drop_params = True
 
 RAW_RESPONSE_EVENT = "raw_response_event"
 PROMPT_DIR = Path(__file__).parent.parent / "prompts"
+DEFAULT_OLLAMA_CHAT_BASE_URL = "https://ollama.com/v1"
+
+
+def _ollama_chat_base_url() -> str:
+    """Resolve OpenAI-compatible base URL for Ollama chat (cloud or local /v1)."""
+    explicit = os.getenv("OLLAMA_CHAT_BASE_URL")
+    if explicit:
+        return explicit.rstrip("/")
+    base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+    if base.endswith("/v1"):
+        return base
+    # Prefer Ollama Cloud when an API key is set and base is still the local default.
+    if os.getenv("OLLAMA_API_KEY") and base in ("http://localhost:11434", "http://127.0.0.1:11434"):
+        return DEFAULT_OLLAMA_CHAT_BASE_URL
+    return f"{base}/v1"
+
+
+def _model_from_call_code(call_code: str) -> str | LitellmModel:
+    """Build a native OpenAI model string or LiteLLM wrapper for a catalog call code.
+
+    Ollama Cloud routes use call codes like ``ollama/kimi-k2.6`` and are served
+    via the OpenAI-compatible API at ``OLLAMA_CHAT_BASE_URL`` with ``OLLAMA_API_KEY``.
+    """
+    model_type, _, route_model = call_code.partition("/")
+    if model_type == "openai":
+        return call_code
+    if model_type == "ollama":
+        # LiteLLM OpenAI-compat path: openai/<model> + custom base_url/api_key.
+        return LitellmModel(
+            f"openai/{route_model or call_code}",
+            base_url=_ollama_chat_base_url(),
+            api_key=os.getenv("OLLAMA_API_KEY") or "ollama",
+        )
+    return LitellmModel(call_code)
 
 
 @dataclass
@@ -63,9 +98,7 @@ class BaseAgent(Agent[Context]):
             # keys; fall back to the best available model, or raise a clear error
             # when no provider key is configured at all.
             self.model = catalog.normalize_code(self.model) or catalog.require_model_code()
-            model_type = self.model.split("/")[0]
-            if model_type != "openai":
-                self.model = LitellmModel(self.model)
+            self.model = _model_from_call_code(self.model)
 
         # if the model does not support temperature, set it to None
         self.model_settings = self._adjust_model_settings(

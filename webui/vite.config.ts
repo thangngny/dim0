@@ -22,6 +22,8 @@ const shouldAnalyzeBundle = process.env.ANALYZE === "true"
 const allowedHosts = [
   "app.dim0.net",
   "mini-app.dim0.net",
+  ".trycloudflare.com",
+  "localhost",
 ]
 
 

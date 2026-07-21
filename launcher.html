@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dim0 Research Generator</title>
+  <meta name="description" content="Nhập chủ đề, Claude AI tự tạo research graph trực quan trên Dim0 canvas" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #09090f;
+      --surface: #12121c;
+      --border:  #1e1e2e;
+      --accent1: #7c3aed;
+      --accent2: #2563eb;
+      --text:    #e2e8f0;
+      --muted:   #64748b;
+      --success: #22c55e;
+      --error:   #ef4444;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 4rem;
+    }
+
+    /* ── Header ── */
+    header { text-align: center; margin-bottom: 2.5rem; }
+    .logo {
+      display: inline-flex; align-items: center; gap: 0.6rem;
+      font-size: 1.6rem; font-weight: 700;
+      background: linear-gradient(135deg, #7c3aed, #2563eb);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 0.4rem;
+    }
+    header p { color: var(--muted); font-size: 0.9rem; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex; gap: 0; margin-bottom: 2rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 0.75rem; overflow: hidden;
+      width: 100%; max-width: 720px;
+    }
+    .tab {
+      flex: 1; padding: 0.7rem 1rem; text-align: center;
+      font-size: 0.875rem; font-weight: 500;
+      color: var(--muted); cursor: pointer;
+      border: none; background: none; transition: all 0.2s;
+    }
+    .tab.active {
+      background: linear-gradient(135deg, var(--accent1), var(--accent2));
+      color: #fff; font-weight: 600;
+    }
+    .tab:not(.active):hover { color: var(--text); }
+
+    /* ── Panel ── */
+    .panel { display: none; width: 100%; max-width: 720px; }
+    .panel.active { display: block; }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 1.25rem; padding: 2rem;
+      box-shadow: 0 0 60px rgba(124,58,237,0.08);
+    }
+
+    /* ── Form ── */
+    .field { margin-bottom: 1.2rem; }
+    label {
+      display: block; font-size: 0.78rem; font-weight: 600;
+      color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.06em; margin-bottom: 0.45rem;
+    }
+    input, select, textarea {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 0.625rem;
+      color: var(--text); font-family: inherit;
+      font-size: 0.95rem; padding: 0.72rem 1rem; outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent1);
+      box-shadow: 0 0 0 3px rgba(124,58,237,0.12);
+    }
+    textarea { resize: vertical; min-height: 90px; }
+    select option { background: var(--surface); }
+    .row { display: flex; gap: 1rem; }
+    .row .field { flex: 1; }
+    .hint { font-size: 0.74rem; color: var(--muted); margin-top: 0.35rem; }
+    .hint code {
+      background: rgba(255,255,255,0.06); padding: 0.1em 0.3em;
+      border-radius: 0.2rem; font-family: monospace; font-size: 0.8em;
+    }
+
+    /* ── Button ── */
+    .btn {
+      width: 100%; padding: 0.9rem 1.5rem;
+      font-family: inherit; font-size: 1rem; font-weight: 600;
+      border: none; border-radius: 0.75rem; cursor: pointer;
+      background: linear-gradient(135deg, var(--accent1), var(--accent2));
+      color: #fff; letter-spacing: 0.02em;
+      transition: opacity 0.2s, transform 0.15s;
+      position: relative; overflow: hidden;
+    }
+    .btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .btn:active:not(:disabled) { transform: translateY(0); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn::before {
+      content: ''; position: absolute; top: 0; left: -100%;
+      width: 60%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+      animation: shimmer 2.5s infinite;
+    }
+    @keyframes shimmer { to { left: 200%; } }
+
+    /* ── Status ── */
+    .status-bar {
+      display: none; align-items: center; gap: 0.6rem;
+      margin-top: 1.25rem; padding: 0.8rem 1rem;
+      border-radius: 0.625rem; font-size: 0.875rem; font-weight: 500;
+    }
+    .status-bar.visible { display: flex; }
+    .status-bar.running { background: rgba(37,99,235,0.12); color: #60a5fa; border: 1px solid rgba(37,99,235,0.2); }
+    .status-bar.done    { background: rgba(34,197,94,0.1);  color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+    .status-bar.error   { background: rgba(239,68,68,0.1);  color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .log-box {
+      display: none; margin-top: 1rem; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 0.625rem;
+      padding: 1rem; max-height: 240px; overflow-y: auto;
+      font-size: 0.78rem; line-height: 1.7; color: var(--muted);
+      font-family: 'Fira Code', 'Consolas', monospace;
+    }
+    .log-box.visible { display: block; }
+    .log-line.hi { color: #a78bfa; }
+
+    .board-link {
+      display: none; align-items: center; gap: 0.6rem;
+      margin-top: 1rem; padding: 0.75rem 1rem;
+      background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);
+      border-radius: 0.625rem; font-size: 0.875rem;
+    }
+    .board-link.visible { display: flex; }
+    .board-link a { color: #4ade80; font-weight: 600; text-decoration: none; }
+    .board-link a:hover { text-decoration: underline; }
+
+    /* ── Guide panel ── */
+    .guide-section { margin-bottom: 1.75rem; }
+    .guide-section h3 {
+      font-size: 1rem; font-weight: 600;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 0.75rem;
+    }
+    .steps-grid { display: flex; flex-direction: column; gap: 0.6rem; }
+    .step-row {
+      display: flex; align-items: flex-start; gap: 0.85rem;
+      padding: 0.85rem 1rem; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 0.75rem;
+    }
+    .step-num {
+      flex-shrink: 0; width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, var(--accent1), var(--accent2));
+      border-radius: 50%; font-size: 0.75rem; font-weight: 700; color: #fff;
+    }
+    .step-body strong { display: block; font-size: 0.9rem; margin-bottom: 0.2rem; }
+    .step-body p { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+    .step-body code {
+      background: rgba(124,58,237,0.15); color: #a78bfa;
+      padding: 0.15em 0.4em; border-radius: 0.25rem;
+      font-family: monospace; font-size: 0.82em;
+    }
+    .step-body a { color: #60a5fa; }
+
+    .info-box {
+      background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.2);
+      border-radius: 0.75rem; padding: 1rem 1.2rem;
+      font-size: 0.83rem; line-height: 1.6; color: #93c5fd;
+    }
+    .info-box strong { color: #bfdbfe; }
+
+    .token-box {
+      display: flex; align-items: center; gap: 0.5rem;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 0.5rem; padding: 0.6rem 0.9rem;
+      font-family: monospace; font-size: 0.78rem;
+      color: #a78bfa; overflow-x: auto; white-space: nowrap;
+    }
+    .copy-btn {
+      flex-shrink: 0; padding: 0.25rem 0.6rem;
+      background: rgba(124,58,237,0.2); border: 1px solid rgba(124,58,237,0.3);
+      color: #a78bfa; border-radius: 0.3rem; cursor: pointer;
+      font-size: 0.72rem; font-family: inherit; transition: background 0.15s;
+    }
+    .copy-btn:hover { background: rgba(124,58,237,0.35); }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+    footer {
+      margin-top: 3rem; color: var(--muted);
+      font-size: 0.75rem; text-align: center;
+    }
+    footer a { color: #7c3aed; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+      <circle cx="14" cy="14" r="13" stroke="url(#g)" stroke-width="2"/>
+      <circle cx="14" cy="9"  r="3" fill="url(#g)"/>
+      <circle cx="8"  cy="19" r="3" fill="url(#g)"/>
+      <circle cx="20" cy="19" r="3" fill="url(#g)"/>
+      <line x1="14" y1="12" x2="9"  y2="17" stroke="url(#g)" stroke-width="1.5"/>
+      <line x1="14" y1="12" x2="19" y2="17" stroke="url(#g)" stroke-width="1.5"/>
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#7c3aed"/>
+          <stop offset="1" stop-color="#2563eb"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    Dim0 Research Generator
+  </div>
+  <p>Claude AI tự động tạo research graph từ chủ đề bất kỳ • realtime trên canvas</p>
+</header>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab active" onclick="showTab('generate')">✦ Tạo Graph</button>
+  <button class="tab" onclick="showTab('guide')">📖 Hướng dẫn</button>
+</div>
+
+<!-- ═══ TAB: GENERATE ═══ -->
+<div id="tab-generate" class="panel active">
+  <div class="card">
+
+    <div class="field">
+      <label>Board ID <span style="color:#ef4444">*</span></label>
+      <input id="boardId" type="text" placeholder="Dán board ID từ URL Dim0 vào đây (xem tab Hướng dẫn)" />
+      <p class="hint">Lấy từ URL: <code>https://sie-villas-cell-attempts.trycloudflare.com/boards/<strong>ID_NÀY</strong></code></p>
+    </div>
+
+    <div class="field">
+      <label>Chủ đề nghiên cứu <span style="color:#ef4444">*</span></label>
+      <textarea id="topic" placeholder="Ví dụ: Tác động của AI tạo sinh lên ngành giáo dục Việt Nam&#10;Ví dụ: Chiến lược phát triển bền vững cho startup SaaS&#10;Ví dụ: Xu hướng thiết kế UX 2025&#10;&#10;Ctrl+Enter để gửi"></textarea>
+    </div>
+
+    <div class="field" style="margin-bottom:0.5rem">
+      <label>Ngôn ngữ</label>
+      <select id="language">
+        <option value="vi">🇻🇳 Tiếng Việt</option>
+        <option value="en">🇬🇧 English</option>
+      </select>
+    </div>
+    <!-- Token ẩn, điền sẵn tự động -->
+    <input id="token" type="hidden" value="b82baa54d8ff5b6e242d2894dbe83bc812e5a3bbae07a348aacdd7ba29200e6d" />
+
+    <button class="btn" id="generateBtn" onclick="generate()">
+      ✦ Generate Research Graph
+    </button>
+
+    <div id="statusBar" class="status-bar">
+      <span class="spinner" id="spinner"></span>
+      <span id="statusText"></span>
+    </div>
+    <div id="boardLink" class="board-link">
+      <span>✅</span>
+      <span>Xong! Mở board để xem:</span>
+      <a id="boardAnchor" href="#" target="_blank">→ Mở Dim0 Canvas</a>
+    </div>
+    <div id="logBox" class="log-box"></div>
+  </div>
+</div>
+
+<!-- ═══ TAB: GUIDE ═══ -->
+<div id="tab-guide" class="panel">
+  <div class="card">
+
+    <!-- ── Tài khoản demo ── -->
+    <div class="guide-section">
+      <h3>🔐 Tài khoản đăng nhập Dim0</h3>
+      <div class="info-box" style="font-size:0.9rem;">
+        <p>Truy cập: <a href="https://sie-villas-cell-attempts.trycloudflare.com" target="_blank"><strong>Dim0 Canvas →</strong></a></p>
+        <div style="display:flex;gap:1.5rem;margin-top:0.75rem;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:0.72rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Email</div>
+            <div style="font-family:monospace;font-size:0.9rem;color:#bfdbfe;">admin@dim0test.com</div>
+          </div>
+          <div>
+            <div style="font-size:0.72rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Password</div>
+            <div style="font-family:monospace;font-size:0.9rem;color:#bfdbfe;">dim0admin</div>
+          </div>
+        </div>
+        <p style="margin-top:0.6rem;font-size:0.8rem;color:#7dd3fc;">Hoặc nhấn <strong>Sign Up</strong> để tự tạo tài khoản mới.</p>
+      </div>
+    </div>
+
+    <hr/>
+
+    <!-- ── 3 bước ── -->
+    <div class="guide-section">
+      <h3>🚀 Bắt đầu trong 3 bước</h3>
+      <div class="steps-grid">
+
+        <div class="step-row">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <strong>Đăng nhập → Tạo board mới</strong>
+            <p>Mở <a href="https://sie-villas-cell-attempts.trycloudflare.com" target="_blank">Dim0 Canvas</a> → đăng nhập bằng tài khoản trên → nhấn <code>+ New Board</code></p>
+          </div>
+        </div>
+
+        <div class="step-row">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <strong>Copy Board ID từ URL</strong>
+            <p>URL sẽ có dạng: <code>…/boards/<strong style="color:#a78bfa">abc123…</strong></code><br/>Copy phần <strong style="color:#a78bfa">abc123…</strong> đó</p>
+          </div>
+        </div>
+
+        <div class="step-row">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <strong>Dán vào ô Board ID → Nhập chủ đề → Generate!</strong>
+            <p>Quay lại tab <strong>Tạo Graph</strong> → dán Board ID → gõ chủ đề → bấm nút.<br/>Node hiện ra realtime trên canvas trong ~30-60 giây ✨</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <hr/>
+
+    <!-- ── Loại node ── -->
+    <div class="guide-section">
+      <h3>📋 Graph được tạo gồm</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.82rem;">
+        <div style="padding:0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem">❓ <strong>Question</strong> — Câu hỏi chủ đạo</div>
+        <div style="padding:0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem">🔍 <strong>Workstream</strong> — Hướng tiếp cận</div>
+        <div style="padding:0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem">📄 <strong>Source/Evidence</strong> — Nguồn dẫn chứng</div>
+        <div style="padding:0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem">💡 <strong>Finding</strong> — Phát hiện</div>
+        <div style="padding:0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem">⚠️ <strong>Contradiction</strong> — Mâu thuẫn</div>
+        <div style="padding:0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem">✅ <strong>Decision</strong> — Kết luận</div>
+        <div style="padding:0.5rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;grid-column:span 2">📋 <strong>Summary</strong> — Tóm tắt toàn bộ</div>
+      </div>
+    </div>
+
+    <hr/>
+
+    <!-- ── FAQ ── -->
+    <div class="guide-section">
+      <h3>❓ FAQ</h3>
+      <div class="steps-grid">
+        <div class="step-row"><div class="step-body"><strong>Mất bao lâu?</strong><p>30–90 giây. Claude suy nghĩ và gọi API tạo từng node realtime.</p></div></div>
+        <div class="step-row"><div class="step-body"><strong>Generate 2 lần?</strong><p>Được — graph mới thêm vào board, không xóa graph cũ.</p></div></div>
+        <div class="step-row"><div class="step-body"><strong>Log chưa hiện gì?</strong><p>Claude đang xử lý (~30s trước khi stream). Bình thường, chờ thêm.</p></div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  Powered by <a href="#">Claude CLI</a> + Ollama + Dim0 MCP &nbsp;·&nbsp;
+  Tunnel: Cloudflare &nbsp;·&nbsp;
+  Server: localhost
+</footer>
+
+<script>
+  const BACKEND = "https://threatening-postings-testament-jar.trycloudflare.com";
+  const FRONTEND = "https://sie-villas-cell-attempts.trycloudflare.com";
+  // Token đã điền sẵn trong hidden input — không cần localStorage
+
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', ['generate','guide'][i] === name);
+    });
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+
+  function copyToken() {
+    const t = document.getElementById('tokenDisplay').textContent;
+    navigator.clipboard.writeText(t).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = '✓ Đã copy';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  }
+
+  function log(text, hi = false) {
+    const box = document.getElementById('logBox');
+    box.classList.add('visible');
+    const line = document.createElement('div');
+    line.className = 'log-line' + (hi ? ' hi' : '');
+    line.textContent = text;
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function setStatus(type, text) {
+    const bar = document.getElementById('statusBar');
+    bar.className = 'status-bar visible ' + type;
+    document.getElementById('statusText').textContent = text;
+    document.getElementById('spinner').style.display = type === 'running' ? 'inline-block' : 'none';
+  }
+
+  async function generate() {
+    const boardId  = document.getElementById('boardId').value.trim();
+    const topic    = document.getElementById('topic').value.trim();
+    const language = document.getElementById('language').value;
+    const token    = document.getElementById('token').value.trim();
+
+    if (!boardId) { alert('Vui lòng nhập Board ID\n\nLấy từ URL sau khi tạo board trên Dim0:\nhttps://sie-villas-cell-attempts.trycloudflare.com'); return; }
+    if (!topic)   { alert('Vui lòng nhập chủ đề nghiên cứu'); return; }
+
+    localStorage.setItem('dim0_token', token);
+
+    const btn = document.getElementById('generateBtn');
+    btn.disabled = true;
+    document.getElementById('logBox').innerHTML = '';
+    document.getElementById('boardLink').classList.remove('visible');
+
+    setStatus('running', 'Đang kết nối...');
+
+    try {
+      const resp = await fetch(`${BACKEND}/integration/boards/${boardId}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Integration-Token': token },
+        body: JSON.stringify({ topic, language, session_id: crypto.randomUUID() }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        setStatus('error', '❌ ' + (err.detail || resp.statusText));
+        btn.disabled = false;
+        return;
+      }
+
+      setStatus('running', 'Claude đang tạo research graph (~30-60 giây)...');
+
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+
+        for (const part of parts) {
+          const data = part.replace(/^data:\s*/, '').trim();
+          if (!data) continue;
+          try {
+            const ev = JSON.parse(data);
+            if (ev.status === 'progress' && ev.text) {
+              log(ev.text, ev.text.startsWith('**') || ev.text.startsWith('✓'));
+            } else if (ev.status === 'running') {
+              setStatus('running', ev.message || 'Đang chạy...');
+            } else if (ev.status === 'done') {
+              setStatus('done', '✅ Research graph đã tạo xong!');
+              const link = document.getElementById('boardLink');
+              document.getElementById('boardAnchor').href = `${FRONTEND}/boards/${boardId}`;
+              link.classList.add('visible');
+              log('✓ Hoàn thành! Mở Dim0 Canvas để xem kết quả.', true);
+            } else if (ev.status === 'error') {
+              setStatus('error', '❌ ' + (ev.detail || 'Lỗi'));
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setStatus('error', '❌ ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('topic').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.ctrlKey) generate();
+  });
+</script>
+</body>
+</html>

@@ -22,6 +22,15 @@ providers:
   mistral:    { key: MISTRAL_API_KEY,    prefix: mistral }
   deepseek:   { key: DEEPSEEK_API_KEY,   prefix: deepseek }
 
+  # Local Ollama — keyless; used for embeddings at OLLAMA_BASE_URL
+  # (default http://localhost:11434). Not used for cloud chat.
+  ollama:     {}
+
+  # Ollama Cloud / OpenAI-compatible chat. Requires OLLAMA_API_KEY.
+  # Call code is "ollama/<model>"; agents/base.py maps it to LiteLLM
+  # openai/<model> against OLLAMA_CHAT_BASE_URL (default https://ollama.com/v1).
+  ollama_cloud: { key: OLLAMA_API_KEY, prefix: ollama }
+
   # Search / fetch providers. No `prefix` (never used as an LLM route); listed
   # here so the single resolver can also gate search/navigate availability.
   linkup:     { key: LINKUP_API_KEY }
@@ -30,6 +39,66 @@ providers:
   exa:        { key: EXA_API_KEY }
 
 llm:
+  # --- Ollama Cloud first (default when only OLLAMA_API_KEY is set) ---
+  # Model strings match https://ollama.com/v1/models ids.
+  - id: kimi-k2.6
+    label: Kimi K2.6
+    family: moonshotai
+    tier: pro
+    routes:
+      - { via: ollama_cloud, model: kimi-k2.6 }
+      - { via: openrouter,   model: moonshotai/kimi-k2.6:nitro }
+  - id: glm-5.2
+    label: GLM 5.2
+    family: z-ai
+    tier: pro
+    routes:
+      - { via: ollama_cloud, model: glm-5.2 }
+      - { via: openrouter,   model: z-ai/glm-5.2:nitro }
+  - id: glm-5.1
+    label: GLM 5.1
+    family: z-ai
+    tier: lite
+    routes:
+      - { via: ollama_cloud, model: glm-5.1 }
+      - { via: openrouter,   model: z-ai/glm-5.1:nitro }
+  - id: minimax-m2.7
+    label: MiniMax M2.7
+    family: minimax
+    tier: pro
+    routes:
+      - { via: ollama_cloud, model: minimax-m2.7 }
+      - { via: openrouter,   model: minimax/minimax-m2.7:nitro }
+  - id: deepseek-v4-pro
+    label: DeepSeek V4 Pro
+    family: deepseek
+    tier: pro
+    routes:
+      - { via: ollama_cloud, model: deepseek-v4-pro }
+      - { via: openrouter,   model: deepseek/deepseek-v4-pro:nitro }
+  - id: deepseek-v4-flash
+    label: DeepSeek V4 Flash
+    family: deepseek
+    tier: lite
+    routes:
+      - { via: ollama_cloud, model: deepseek-v4-flash }
+      - { via: openrouter,   model: deepseek/deepseek-v4-flash:nitro }
+  - id: gemma-4-31b
+    label: Gemma 4 31B
+    family: google
+    tier: lite
+    routes:
+      - { via: ollama_cloud, model: gemma4:31b }
+      - { via: openrouter,   model: google/gemma-4-31b-it:nitro }
+  - id: mistral-large
+    label: Mistral Large
+    family: mistralai
+    tier: pro
+    routes:
+      - { via: ollama_cloud, model: mistral-large-3:675b }
+      - { via: mistral,      model: mistral-large-latest }
+      - { via: openrouter,   model: mistralai/mistral-large-2512:nitro }
+
   # --- OpenAI (native preferred, OpenRouter fallback without :nitro) ---
   - id: gpt-5.5
     label: GPT-5.5
@@ -90,27 +159,7 @@ llm:
       - { via: anthropic,  model: claude-haiku-4-5 }
       - { via: openrouter, model: anthropic/claude-haiku-4.5 }
 
-  # --- z-ai GLM (OpenRouter only) ---
-  - id: glm-5.2
-    label: GLM 5.2
-    family: z-ai
-    tier: pro
-    routes:
-      - { via: openrouter, model: z-ai/glm-5.2:nitro }
-  - id: glm-5.1
-    label: GLM 5.1
-    family: z-ai
-    tier: lite
-    routes:
-      - { via: openrouter, model: z-ai/glm-5.1:nitro }
-
-  # --- Google Gemma (OpenRouter only) ---
-  - id: gemma-4-31b
-    label: Gemma 4 31B
-    family: google
-    tier: lite
-    routes:
-      - { via: openrouter, model: google/gemma-4-31b-it:nitro }
+  # --- Google Gemma (OpenRouter only for 26b) ---
   - id: gemma-4-26b
     label: Gemma 4 26B
     family: google
@@ -126,28 +175,7 @@ llm:
     routes:
       - { via: openrouter, model: qwen/qwen3.6-plus:nitro }
 
-  # --- DeepSeek V4 (OpenRouter only) ---
-  - id: deepseek-v4-pro
-    label: DeepSeek V4 Pro
-    family: deepseek
-    tier: pro
-    routes:
-      - { via: openrouter, model: deepseek/deepseek-v4-pro:nitro }
-  - id: deepseek-v4-flash
-    label: DeepSeek V4 Flash
-    family: deepseek
-    tier: lite
-    routes:
-      - { via: openrouter, model: deepseek/deepseek-v4-flash:nitro }
-
-  # --- Mistral (native preferred, OpenRouter fallback with :nitro) ---
-  - id: mistral-large
-    label: Mistral Large
-    family: mistralai
-    tier: pro
-    routes:
-      - { via: mistral,    model: mistral-large-latest }
-      - { via: openrouter, model: mistralai/mistral-large-2512:nitro }
+  # --- Mistral medium ---
   - id: mistral-medium-3.5
     label: Mistral Medium 3.5
     family: mistralai
@@ -156,24 +184,16 @@ llm:
       - { via: mistral,    model: mistral-medium-latest }
       - { via: openrouter, model: mistralai/mistral-medium-3-5:nitro }
 
-  # --- Moonshot Kimi (OpenRouter only) ---
-  - id: kimi-k2.6
-    label: Kimi K2.6
-    family: moonshotai
-    tier: pro
-    routes:
-      - { via: openrouter, model: moonshotai/kimi-k2.6:nitro }
-
-  # --- MiniMax (OpenRouter only) ---
-  - id: minimax-m2.7
-    label: MiniMax M2.7
-    family: minimax
-    tier: pro
-    routes:
-      - { via: openrouter, model: minimax/minimax-m2.7:nitro }
-
 embedding:
   # Routes under one id MUST share `dim` (vectors are not cross-compatible).
+  # nomic-embed-text runs locally on Ollama (dim 768); no API key required.
+  - id: nomic-embed-text
+    label: Nomic Embed Text (Ollama local)
+    family: nomic
+    dim: 768
+    routes:
+      - { via: ollama, model: nomic-embed-text }
+
   # openai-native and openrouter both serve text-embedding-3-small at dim 512.
   - id: text-embedding-3-small
     label: OpenAI text-embedding-3-small

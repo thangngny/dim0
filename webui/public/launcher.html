@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dim0 Research Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #09090f; --surface: #12121c; --border: #1e1e2e;
+      --accent1: #7c3aed; --accent2: #2563eb;
+      --text: #e2e8f0; --muted: #64748b;
+    }
+    body {
+      font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text);
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; padding: 2.5rem 1rem 4rem;
+    }
+    header { text-align: center; margin-bottom: 2.5rem; }
+    .logo {
+      display: inline-flex; align-items: center; gap: 0.6rem;
+      font-size: 1.6rem; font-weight: 700;
+      background: linear-gradient(135deg, #7c3aed, #2563eb);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 0.4rem;
+    }
+    header p { color: var(--muted); font-size: 0.88rem; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 1.25rem; padding: 2rem; width: 100%; max-width: 620px;
+      box-shadow: 0 0 60px rgba(124,58,237,0.08);
+    }
+
+    .steps-bar { display: flex; align-items: center; margin-bottom: 2rem; gap: 0; }
+    .step-dot { display: flex; flex-direction: column; align-items: center; flex: 1; }
+    .dot {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem; font-weight: 700;
+      background: var(--border); color: var(--muted);
+      border: 2px solid var(--border); transition: all 0.3s;
+    }
+    .dot.active { background: linear-gradient(135deg, var(--accent1), var(--accent2)); color: #fff; border-color: transparent; }
+    .dot.done { background: rgba(34,197,94,0.15); color: #4ade80; border-color: #4ade80; }
+    .step-label { font-size: 0.65rem; color: var(--muted); margin-top: 0.3rem; text-align: center; }
+    .step-line { flex: 1; height: 2px; background: var(--border); margin: 0 -1px; margin-bottom: 1.4rem; transition: background 0.3s; }
+    .step-line.done { background: #4ade80; }
+
+    .panel { display: none !important; }
+    .panel.active { display: block !important; animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .field { margin-bottom: 1.1rem; }
+    label { display: block; font-size: 0.76rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem; }
+    input, select, textarea {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 0.625rem; color: var(--text); font-family: inherit;
+      font-size: 0.95rem; padding: 0.72rem 1rem; outline: none; transition: border-color 0.2s;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent1); box-shadow: 0 0 0 3px rgba(124,58,237,0.12); }
+    textarea { resize: vertical; min-height: 100px; }
+    select option { background: var(--surface); }
+
+    .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem; }
+    .mode-opt {
+      border: 1px solid var(--border); border-radius: 0.75rem; padding: 0.7rem 0.75rem;
+      cursor: pointer; background: var(--bg); transition: border-color 0.15s, background 0.15s;
+    }
+    .mode-opt:hover { border-color: rgba(124,58,237,0.5); }
+    .mode-opt.active { border-color: var(--accent1); background: rgba(124,58,237,0.1); }
+    .mode-opt strong { display: block; font-size: 0.85rem; margin-bottom: 0.2rem; }
+    .mode-opt span { font-size: 0.72rem; color: var(--muted); line-height: 1.35; }
+    .mode-opt input { display: none; }
+
+    .btn {
+      width: 100%; padding: 0.85rem 1.5rem; font-family: inherit;
+      font-size: 1rem; font-weight: 600; border: none; border-radius: 0.75rem;
+      cursor: pointer; background: linear-gradient(135deg, var(--accent1), var(--accent2));
+      color: #fff; letter-spacing: 0.02em; transition: opacity 0.2s, transform 0.15s;
+      position: relative; overflow: hidden; margin-top: 0.5rem;
+    }
+    .btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn.secondary {
+      background: transparent; border: 1px solid var(--border); color: var(--text);
+      margin-top: 0.5rem;
+    }
+    .btn.secondary:hover:not(:disabled) { border-color: var(--accent1); }
+
+    .q-card {
+      border: 1px solid var(--border); border-radius: 0.75rem;
+      padding: 0.85rem 0.9rem; margin-bottom: 0.65rem; background: var(--bg);
+    }
+    .q-card .q-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.25rem; line-height: 1.35; }
+    .q-card .q-why { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.45rem; line-height: 1.35; }
+    .q-opts { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.5rem; }
+    .q-opt {
+      font-size: 0.72rem; padding: 0.28rem 0.55rem; border-radius: 999px;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+      cursor: pointer;
+    }
+    .q-opt:hover { border-color: var(--accent1); color: #c4b5fd; }
+    .q-card textarea { min-height: 56px; font-size: 0.88rem; }
+
+    .status-bar {
+      display: none; align-items: center; gap: 0.6rem;
+      margin-top: 1.2rem; padding: 0.8rem 1rem;
+      border-radius: 0.625rem; font-size: 0.875rem; font-weight: 500;
+    }
+    .status-bar.visible { display: flex; }
+    .status-bar.running { background: rgba(37,99,235,0.12); color: #60a5fa; border: 1px solid rgba(37,99,235,0.2); }
+    .status-bar.done    { background: rgba(34,197,94,0.1);  color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+    .status-bar.error   { background: rgba(239,68,68,0.1);  color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .log-box {
+      display: none; margin-top: 1rem; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 0.625rem;
+      padding: 1rem; max-height: 220px; overflow-y: auto;
+      font-size: 0.77rem; line-height: 1.7; color: var(--muted);
+      font-family: 'Consolas', monospace;
+    }
+    .log-box.visible { display: block; }
+    .log-line.hi { color: #a78bfa; }
+
+    .result-box {
+      display: none; margin-top: 1rem; padding: 1.2rem;
+      background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.2);
+      border-radius: 0.875rem; text-align: center;
+    }
+    .result-box.visible { display: block; }
+    .result-box h3 { color: #4ade80; margin-bottom: 0.5rem; font-size: 1rem; }
+    .result-box p { color: var(--muted); font-size: 0.82rem; margin-bottom: 1rem; }
+    .open-btn {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.65rem 1.4rem; border-radius: 0.6rem; font-weight: 600;
+      font-size: 0.9rem; text-decoration: none; color: #fff;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+    }
+    .open-btn:hover { opacity: 0.85; }
+
+    .hint { font-size: 0.73rem; color: var(--muted); margin-top: 0.35rem; }
+    .hint a { color: #60a5fa; }
+    .or-line { text-align: center; color: var(--muted); font-size: 0.8rem; margin: 0.75rem 0; position: relative; }
+    .or-line::before, .or-line::after { content:''; position: absolute; top: 50%; width: 42%; height: 1px; background: var(--border); }
+    .or-line::before { left: 0; } .or-line::after { right: 0; }
+
+    .signup-link {
+      display: block; text-align: center; font-size: 0.82rem;
+      color: #60a5fa; text-decoration: none; margin-top: 0.5rem;
+    }
+    .demo-badge {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: rgba(124,58,237,0.12); border: 1px solid rgba(124,58,237,0.25);
+      border-radius: 0.4rem; padding: 0.3rem 0.6rem; font-size: 0.75rem; color: #a78bfa;
+      margin-bottom: 0.9rem; cursor: pointer;
+    }
+    .board-id {
+      font-family: monospace; font-size: 0.72rem; color: var(--muted);
+      word-break: break-all; margin: 0.5rem 0 1rem;
+    }
+    footer { margin-top: 2.5rem; color: var(--muted); font-size: 0.73rem; text-align: center; }
+    footer a { color: #7c3aed; }
+
+    .session-bar {
+      display: none; margin-bottom: 1.25rem; padding: 0.85rem 1rem;
+      background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.25);
+      border-radius: 0.75rem; font-size: 0.82rem;
+    }
+    .session-bar.visible { display: block; }
+    .session-bar strong { color: #c4b5fd; }
+    .session-bar .row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.45rem; }
+    .session-bar button, .session-bar a.chip {
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      border-radius: 0.45rem; padding: 0.35rem 0.65rem; font-size: 0.75rem;
+      cursor: pointer; font-family: inherit; text-decoration: none;
+    }
+    .session-bar button.primary, .session-bar a.chip.primary {
+      background: linear-gradient(135deg, var(--accent1), var(--accent2));
+      border-color: transparent; color: #fff;
+    }
+    .history-list { margin-top: 0.75rem; max-height: 140px; overflow-y: auto; }
+    .history-item {
+      display: flex; justify-content: space-between; gap: 0.5rem; align-items: center;
+      padding: 0.45rem 0; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--muted);
+    }
+    .history-item button { flex-shrink: 0; }
+    .history-item .title { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg width="26" height="26" viewBox="0 0 28 28" fill="none">
+      <circle cx="14" cy="14" r="13" stroke="url(#g)" stroke-width="2"/>
+      <circle cx="14" cy="9" r="3" fill="url(#g)"/>
+      <circle cx="8" cy="19" r="3" fill="url(#g)"/>
+      <circle cx="20" cy="19" r="3" fill="url(#g)"/>
+      <line x1="14" y1="12" x2="9" y2="17" stroke="url(#g)" stroke-width="1.5"/>
+      <line x1="14" y1="12" x2="19" y2="17" stroke="url(#g)" stroke-width="1.5"/>
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#7c3aed"/><stop offset="1" stop-color="#2563eb"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    Dim0 Research Generator
+  </div>
+  <p>Clarify → Explore → Reframe → Expand · nhớ session & board giữa các lần mở</p>
+</header>
+
+<div class="card">
+
+  <!-- Persistent session (localStorage) -->
+  <div class="session-bar" id="sessionBar">
+    <div><strong>Phiên đã lưu</strong> — mở lại launcher không mất board</div>
+    <div class="row" id="sessionActions"></div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <div class="steps-bar">
+    <div class="step-dot">
+      <div class="dot active" id="dot1">1</div>
+      <div class="step-label">Đăng nhập</div>
+    </div>
+    <div class="step-line" id="line1"></div>
+    <div class="step-dot">
+      <div class="dot" id="dot2">2</div>
+      <div class="step-label">Clarify</div>
+    </div>
+    <div class="step-line" id="line2"></div>
+    <div class="step-dot">
+      <div class="dot" id="dot3">3</div>
+      <div class="step-label">Kết quả</div>
+    </div>
+    <div class="step-line" id="line3"></div>
+    <div class="step-dot">
+      <div class="dot" id="dot4">4</div>
+      <div class="step-label">Refine</div>
+    </div>
+  </div>
+
+  <!-- STEP 1 -->
+  <div id="step1" class="panel active">
+    <div class="field">
+      <label>Email</label>
+      <input id="email" type="email" placeholder="email@example.com" autocomplete="email" />
+    </div>
+    <div class="field">
+      <label>Mật khẩu</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <div class="or-line">hoặc dùng tài khoản demo</div>
+    <div class="demo-badge" onclick="fillDemo()">⚡ admin@dim0test.com / dim0admin</div>
+    <button class="btn" id="loginBtn" onclick="doLogin()">Đăng nhập →</button>
+    <div id="loginStatus" class="status-bar"></div>
+    <a id="signupLink" href="#" target="_blank" class="signup-link">Chưa có tài khoản? Đăng ký →</a>
+  </div>
+
+  <!-- STEP 2 Clarify → Scope → Explore -->
+  <div id="step2" class="panel">
+    <!-- phase: topic -->
+    <div id="clarifyTopicPhase">
+      <div class="field">
+        <label>Chủ đề nghiên cứu <span style="color:#ef4444">*</span></label>
+        <textarea id="topic" placeholder="Ví dụ: chiến dịch storytelling các thương hiệu bảo hiểm&#10;&#10;Hệ thống sẽ hỏi làm rõ trước khi explore sâu"></textarea>
+      </div>
+      <div class="field">
+        <label>Ngôn ngữ</label>
+        <select id="language">
+          <option value="vi">🇻🇳 Tiếng Việt</option>
+          <option value="en">🇬🇧 English</option>
+        </select>
+      </div>
+      <div class="hint" style="margin-bottom:0.75rem;line-height:1.5">
+        <strong>Clarify trước, research sau.</strong> Hệ thống hỏi 5–7 câu để làm rõ bài toán,
+        chốt IN/OUT scope, rồi mới explore theo brief đã khóa.
+      </div>
+      <button class="btn" id="clarifyBtn" onclick="doClarifyQuestions()">❓ Làm rõ bài toán</button>
+      <button class="btn secondary" id="skipClarifyBtn" onclick="skipClarifyExplore()">Bỏ qua clarify → Explore thẳng</button>
+      <button class="btn secondary" id="skipToRefineBtn" style="display:none" onclick="goStep(4)">Đã có board — sang Refine →</button>
+      <div id="clarifyStatus" class="status-bar"></div>
+    </div>
+
+    <!-- phase: questions -->
+    <div id="clarifyQuestionsPhase" style="display:none">
+      <div class="hint" style="margin-bottom:0.75rem">
+        Trả lời ngắn (hoặc bấm gợi ý). Có thể bỏ trống 1–2 câu — hệ thống ghi assumption.
+      </div>
+      <div id="questionsList"></div>
+      <button class="btn" id="scopeBtn" onclick="doClarifyScope()">🔒 Chốt phạm vi nghiên cứu</button>
+      <button class="btn secondary" onclick="backToTopic()">← Sửa topic</button>
+      <div id="scopeStatus" class="status-bar"></div>
+    </div>
+
+    <!-- phase: scope review -->
+    <div id="clarifyScopePhase" style="display:none">
+      <div class="result-box visible" style="margin-bottom:1rem">
+        <h3>🔒 Scope đã chốt</h3>
+        <p id="scopeProblem" style="margin:0.5rem 0;line-height:1.45"></p>
+        <div class="board-id" id="scopeMeta" style="white-space:pre-wrap;text-align:left;max-height:220px;overflow:auto"></div>
+      </div>
+      <div class="field">
+        <label>Scope brief (có thể sửa trước khi explore)</label>
+        <textarea id="scopeBrief" style="min-height:160px"></textarea>
+      </div>
+      <button class="btn" id="generateBtn" onclick="doGenerate()">✦ Explore theo scope này</button>
+      <button class="btn secondary" onclick="backToQuestions()">← Sửa câu trả lời</button>
+      <div id="generateStatus" class="status-bar"></div>
+      <div id="logBox" class="log-box"></div>
+    </div>
+  </div>
+
+  <!-- STEP 3 Result -->
+  <div id="step3" class="panel">
+    <div class="result-box visible">
+      <h3>✅ Graph đã cập nhật</h3>
+      <p id="resultMsg">Mở canvas để xem, hoặc sang bước Refine để reframe / expand.</p>
+      <div class="board-id" id="boardIdLabel"></div>
+      <a id="openBoard" href="#" target="_blank" class="open-btn" onclick="return openBoardChat(event)">💬 Mở Dim0 &amp; chat tiếp →</a>
+      <p class="hint" style="margin-top:0.85rem;text-align:left;line-height:1.5">
+        <strong>Cách chat dễ nhất trên Dim0:</strong><br/>
+        1) Click <strong>1 ô</strong> trên canvas (vd. workstream cảm động)<br/>
+        2) Ô chat hiện <code>@selection</code> → gõ câu hỏi hoặc bấm gợi ý<br/>
+        3) Không chọn ô = hỏi cả board (<code>@board</code>)
+      </p>
+    </div>
+
+    <div class="field" style="margin-top:1rem">
+      <label>Copy prompt → dán vào chat Dim0</label>
+      <div class="mode-grid" style="grid-template-columns:1fr">
+        <button type="button" class="mode-opt" style="text-align:left;cursor:pointer" onclick="copyDim0Prompt('summary')">
+          <strong>📋 Tóm tắt board</strong>
+          <span>Giải thích framework + insight chính (cả board)</span>
+        </button>
+        <button type="button" class="mode-opt" style="text-align:left;cursor:pointer" onclick="copyDim0Prompt('focus')">
+          <strong>🔍 Làm rõ 1 nhánh</strong>
+          <span>Chọn ô trước trên canvas, rồi dán prompt này</span>
+        </button>
+        <button type="button" class="mode-opt" style="text-align:left;cursor:pointer" onclick="copyDim0Prompt('gaps')">
+          <strong>❔ Tìm chỗ còn yếu</strong>
+          <span>Claim thiếu source, mâu thuẫn, Unknown</span>
+        </button>
+      </div>
+      <div id="copyHint" class="hint" style="margin-top:0.4rem"></div>
+    </div>
+
+    <button class="btn" onclick="goStep(4)">Refine lớn trên launcher (Reframe / Expand) →</button>
+    <button class="btn secondary" onclick="goStep(2)">Explore topic khác (board mới)</button>
+  </div>
+
+  <!-- STEP 4 Refine -->
+  <div id="step4" class="panel">
+    <div class="field">
+      <label>Chế độ refine (cùng board)</label>
+      <div class="mode-grid">
+        <label class="mode-opt active" data-mode="reframe">
+          <input type="radio" name="mode" value="reframe" checked />
+          <strong>Reframe</strong>
+          <span>Đổi trục taxonomy cả board (vd. brand → storytelling modes)</span>
+        </label>
+        <label class="mode-opt" data-mode="expand">
+          <input type="radio" name="mode" value="expand" />
+          <strong>Expand</strong>
+          <span>Đào sâu 1 cụm/node (vd. nhánh cảm động → brands)</span>
+        </label>
+        <label class="mode-opt" data-mode="critique">
+          <input type="radio" name="mode" value="critique" />
+          <strong>Critique</strong>
+          <span>Tìm gap, contradiction, evidence yếu</span>
+        </label>
+        <label class="mode-opt" data-mode="explore">
+          <input type="radio" name="mode" value="explore" />
+          <strong>Explore+</strong>
+          <span>Bổ sung rộng trên board hiện tại (cẩn thận trùng)</span>
+        </label>
+      </div>
+    </div>
+    <div class="field" id="focusField" style="display:none">
+      <label>Focus node IDs (expand — dán từ URL/note id, cách nhau bằng dấu phẩy)</label>
+      <input id="focusIds" type="text" placeholder="vd. abc123, def456 (tuỳ chọn — có thể mô tả node trong instruction)" />
+    </div>
+    <div class="field">
+      <label>Instruction refine <span style="color:#ef4444">*</span></label>
+      <textarea id="refineInstruction" placeholder="Ví dụ reframe: phân chia theo hướng kể chuyện hài hước, cảm động, sôi động, flashback, storytelling…&#10;&#10;Ví dụ expand: với nhánh cảm động, brand nào thường kể chuyện kiểu này + campaign/message&#10;&#10;Ví dụ critique: tìm claim thiếu source, mâu thuẫn giữa nhánh"></textarea>
+    </div>
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:0.5rem;text-transform:none;font-weight:500;cursor:pointer">
+        <input type="checkbox" id="useWebEvidence" checked style="width:auto" />
+        Thu thập web evidence trước khi chạy (nếu có API key)
+      </label>
+      <div class="hint">Cần LINKUP / TAVILY / PERPLEXITY / EXA key trên server. Không có key → vẫn chạy, confidence thấp hơn.</div>
+    </div>
+    <div class="board-id" id="boardIdLabel2"></div>
+    <button class="btn" id="refineBtn" onclick="doRefine()">✦ Chạy Refine</button>
+    <button class="btn secondary" onclick="goStep(3)">← Về kết quả</button>
+    <div id="refineStatus" class="status-bar"></div>
+    <div id="refineLogBox" class="log-box"></div>
+  </div>
+
+</div>
+
+<footer>
+  Powered by Claude CLI + Dim0 MCP · multi-mode research
+  · <a id="footerCanvas" href="#" target="_blank">Mở Dim0 Canvas</a>
+</footer>
+
+<script>
+  const BACKEND  = "https://ringtone-metal-stored-magazines.trycloudflare.com"
+  const FRONTEND = "https://reload-these-jesse-spice.trycloudflare.com"
+  const TOKEN    = "b82baa54d8ff5b6e242d2894dbe83bc812e5a3bbae07a348aacdd7ba29200e6d"
+  const STORAGE_KEY = "dim0_research_launcher_v1"
+
+  let jwt = ""
+  let boardId = ""
+  let lastLanguage = "vi"
+  let lastTopic = ""
+  let lastEmail = ""
+  let lastStep = 1
+  let lastScopeBrief = ""
+  let lastClarifyQuestions = []
+
+  document.getElementById("signupLink").href = FRONTEND + "/signup"
+  document.getElementById("footerCanvas").href = FRONTEND
+
+  function showClarifyPhase(phase) {
+    /** Show one of topic | questions | scope inside step 2. */
+    const map = {
+      topic: "clarifyTopicPhase",
+      questions: "clarifyQuestionsPhase",
+      scope: "clarifyScopePhase",
+    }
+    Object.values(map).forEach((id) => {
+      const el = document.getElementById(id)
+      if (el) el.style.display = "none"
+    })
+    const show = document.getElementById(map[phase] || map.topic)
+    if (show) show.style.display = "block"
+  }
+
+  function renderQuestions(questions) {
+    /** Render clarify Q&A form cards. */
+    const root = document.getElementById("questionsList")
+    root.innerHTML = ""
+    lastClarifyQuestions = questions || []
+    lastClarifyQuestions.forEach((q, idx) => {
+      const card = document.createElement("div")
+      card.className = "q-card"
+      const opts = (q.options || [])
+        .map(
+          (o) =>
+            `<button type="button" class="q-opt" data-qid="${q.id}" data-opt="${String(o).replace(/"/g, "&quot;")}">${o}</button>`
+        )
+        .join("")
+      card.innerHTML = `
+        <div class="q-title">${idx + 1}. ${q.question || ""}</div>
+        ${q.why ? `<div class="q-why">${q.why}</div>` : ""}
+        ${opts ? `<div class="q-opts">${opts}</div>` : ""}
+        <textarea id="ans_${q.id}" placeholder="${q.hint || "Câu trả lời của bạn…"}"></textarea>
+      `
+      root.appendChild(card)
+    })
+    root.querySelectorAll(".q-opt").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const ta = document.getElementById("ans_" + btn.dataset.qid)
+        if (ta) ta.value = btn.dataset.opt || btn.textContent
+      })
+    })
+  }
+
+  function collectAnswers() {
+    /** Collect answers for current clarify questions. */
+    return lastClarifyQuestions.map((q) => ({
+      id: q.id,
+      answer: (document.getElementById("ans_" + q.id)?.value || "").trim(),
+    }))
+  }
+
+  async function doClarifyQuestions() {
+    const topic = document.getElementById("topic").value.trim()
+    lastLanguage = document.getElementById("language").value
+    lastTopic = topic
+    if (!topic) {
+      alert("Vui lòng nhập chủ đề nghiên cứu")
+      return
+    }
+    const btn = document.getElementById("clarifyBtn")
+    btn.disabled = true
+    setStatus("clarifyStatus", "running", "Đang soạn câu hỏi làm rõ (Ollama)...")
+    try {
+      const r = await fetch(`${BACKEND}/integration/research/clarify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Integration-Token": TOKEN,
+        },
+        body: JSON.stringify({
+          topic,
+          language: lastLanguage,
+          stage: "questions",
+        }),
+      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}))
+        throw new Error(typeof e.detail === "string" ? e.detail : JSON.stringify(e.detail || r.statusText))
+      }
+      const d = await r.json()
+      const questions = d.questions || d.data?.questions || []
+      if (!questions.length) throw new Error("Không nhận được câu hỏi")
+      renderQuestions(questions)
+      setStatus("clarifyStatus", "done", `✅ ${questions.length} câu hỏi (model: ${d.model || "—"})`)
+      showClarifyPhase("questions")
+      saveState({ lastTopic: topic, lastLanguage, lastStep: 2, jwt, boardId })
+    } catch (e) {
+      setStatus("clarifyStatus", "error", "❌ " + e.message)
+    } finally {
+      btn.disabled = false
+    }
+  }
+
+  async function doClarifyScope() {
+    const topic = document.getElementById("topic").value.trim()
+    lastLanguage = document.getElementById("language").value
+    lastTopic = topic
+    const answers = collectAnswers()
+    const answered = answers.filter((a) => a.answer).length
+    if (answered === 0) {
+      if (!confirm("Bạn chưa trả lời câu nào. Vẫn chốt scope với assumption?")) return
+    }
+    const btn = document.getElementById("scopeBtn")
+    btn.disabled = true
+    setStatus("scopeStatus", "running", "Đang chốt phạm vi nghiên cứu...")
+    try {
+      const r = await fetch(`${BACKEND}/integration/research/clarify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Integration-Token": TOKEN,
+        },
+        body: JSON.stringify({
+          topic,
+          language: lastLanguage,
+          stage: "scope",
+          answers,
+        }),
+      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}))
+        throw new Error(typeof e.detail === "string" ? e.detail : JSON.stringify(e.detail || r.statusText))
+      }
+      const d = await r.json()
+      const scope = d.scope_brief ? d : d.data || d
+      lastScopeBrief = scope.scope_brief || ""
+      document.getElementById("scopeProblem").textContent =
+        scope.problem_statement || topic
+      const axes = (scope.research_axes || []).join(" · ")
+      const inn = (scope.in_scope || []).map((x) => "✓ " + x).join("\n")
+      const out = (scope.out_of_scope || []).map((x) => "✗ " + x).join("\n")
+      document.getElementById("scopeMeta").textContent =
+        (axes ? "Trục: " + axes + "\n\n" : "") +
+        (inn ? "IN SCOPE\n" + inn + "\n\n" : "") +
+        (out ? "OUT OF SCOPE\n" + out : "")
+      document.getElementById("scopeBrief").value = lastScopeBrief
+      setStatus("scopeStatus", "done", `✅ Scope locked (model: ${scope.model || "—"})`)
+      showClarifyPhase("scope")
+      saveState({ lastTopic: topic, lastLanguage, lastScopeBrief, lastStep: 2, jwt, boardId })
+    } catch (e) {
+      setStatus("scopeStatus", "error", "❌ " + e.message)
+    } finally {
+      btn.disabled = false
+    }
+  }
+
+  function backToTopic() {
+    showClarifyPhase("topic")
+  }
+
+  function backToQuestions() {
+    showClarifyPhase("questions")
+  }
+
+  async function skipClarifyExplore() {
+    /** Explore without clarify — uses raw topic as instruction. */
+    lastScopeBrief = ""
+    const topic = document.getElementById("topic").value.trim()
+    if (!topic) {
+      alert("Vui lòng nhập chủ đề")
+      return
+    }
+    lastTopic = topic
+    lastLanguage = document.getElementById("language").value
+    // synthetic brief so doGenerate still works from topic phase
+    document.getElementById("scopeBrief").value = topic
+    showClarifyPhase("scope")
+    document.getElementById("scopeProblem").textContent =
+      "Explore thẳng (không clarify): " + topic
+    document.getElementById("scopeMeta").textContent =
+      "Bạn đã bỏ qua bước làm rõ. Research có thể rộng hơn ý định."
+    await doGenerate()
+  }
+
+  // ── Persistence (localStorage) ──
+  function loadState() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}
+    } catch {
+      return {}
+    }
+  }
+
+  function saveState(patch) {
+    const cur = loadState()
+    const next = { ...cur, ...patch, updatedAt: Date.now() }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    renderSessionBar()
+  }
+
+  function clearSession({ keepHistory = true } = {}) {
+    const hist = keepHistory ? (loadState().history || []) : []
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ history: hist, updatedAt: Date.now() }))
+    jwt = ""
+    boardId = ""
+    lastTopic = ""
+    lastStep = 1
+    renderSessionBar()
+    goStep(1)
+  }
+
+  function rememberBoard({ id, topic, language }) {
+    boardId = id
+    lastTopic = topic || lastTopic
+    lastLanguage = language || lastLanguage
+    const st = loadState()
+    const history = Array.isArray(st.history) ? st.history.slice() : []
+    // de-dupe by board id, newest first
+    const filtered = history.filter((h) => h.id !== id)
+    filtered.unshift({
+      id,
+      topic: (topic || lastTopic || "Board").slice(0, 80),
+      language: lastLanguage,
+      at: Date.now(),
+    })
+    saveState({
+      jwt,
+      boardId: id,
+      lastTopic,
+      lastLanguage,
+      lastEmail,
+      lastStep,
+      lastRefine: document.getElementById("refineInstruction")?.value || st.lastRefine || "",
+      history: filtered.slice(0, 12),
+    })
+  }
+
+  function resumeBoard(id, topic) {
+    boardId = id
+    if (topic) {
+      lastTopic = topic
+      const topicEl = document.getElementById("topic")
+      if (topicEl && !topicEl.value) topicEl.value = topic
+    }
+    saveState({ boardId: id, lastTopic, lastStep: 4, jwt, lastLanguage, lastEmail })
+    document.getElementById("resultMsg").textContent =
+      "Đã mở lại board đã lưu. Tiếp tục Refine / Expand hoặc mở canvas."
+    goStep(3)
+  }
+
+  function renderSessionBar() {
+    const st = loadState()
+    const bar = document.getElementById("sessionBar")
+    const actions = document.getElementById("sessionActions")
+    const histEl = document.getElementById("historyList")
+    const hasJwt = Boolean(jwt || st.jwt)
+    const hasBoard = Boolean(boardId || st.boardId)
+    const history = st.history || []
+
+    if (!hasJwt && history.length === 0) {
+      bar.classList.remove("visible")
+      return
+    }
+    bar.classList.add("visible")
+
+    const activeId = boardId || st.boardId || ""
+    const activeTopic = lastTopic || st.lastTopic || ""
+    actions.innerHTML = ""
+
+    if (hasJwt) {
+      const info = document.createElement("span")
+      info.textContent = lastEmail || st.lastEmail
+        ? `Đã đăng nhập: ${lastEmail || st.lastEmail}`
+        : "Đã đăng nhập (token lưu trình duyệt)"
+      actions.appendChild(info)
+    }
+    if (activeId) {
+      const b = document.createElement("span")
+      b.innerHTML = `Board: <code style="color:#a78bfa">${activeId.slice(0, 12)}…</code>`
+      if (activeTopic) b.title = activeTopic
+      actions.appendChild(b)
+
+      const open = document.createElement("a")
+      open.className = "chip primary"
+      open.href = `${FRONTEND}/boards/${activeId}?research=1`
+      open.target = "_blank"
+      open.textContent = "Mở Dim0 & chat"
+      open.onclick = (e) => {
+        e.preventDefault()
+        boardId = activeId
+        stashAndOpenDim0(DIM0_CHAT_PROMPTS.summary)
+      }
+      actions.appendChild(open)
+
+      const refine = document.createElement("button")
+      refine.className = "primary"
+      refine.type = "button"
+      refine.textContent = "Tiếp tục Refine"
+      refine.onclick = () => resumeBoard(activeId, activeTopic)
+      actions.appendChild(refine)
+    }
+
+    const logout = document.createElement("button")
+    logout.type = "button"
+    logout.textContent = "Đăng xuất / xóa phiên"
+    logout.onclick = () => {
+      if (confirm("Xóa login + board hiện tại khỏi trình duyệt? (Lịch sử board vẫn giữ)")) {
+        clearSession({ keepHistory: true })
+      }
+    }
+    actions.appendChild(logout)
+
+    const wipe = document.createElement("button")
+    wipe.type = "button"
+    wipe.textContent = "Xóa hết lịch sử"
+    wipe.onclick = () => {
+      if (confirm("Xóa toàn bộ lịch sử board trên máy này?")) {
+        clearSession({ keepHistory: false })
+      }
+    }
+    actions.appendChild(wipe)
+
+    histEl.innerHTML = ""
+    if (history.length) {
+      const title = document.createElement("div")
+      title.style.cssText = "font-size:0.72rem;color:var(--muted);margin-bottom:0.25rem"
+      title.textContent = "Board gần đây (click Tiếp tục):"
+      histEl.appendChild(title)
+    }
+    history.slice(0, 8).forEach((h) => {
+      const row = document.createElement("div")
+      row.className = "history-item"
+      const left = document.createElement("div")
+      left.className = "title"
+      left.textContent = h.topic || h.id
+      left.title = h.id
+      const btn = document.createElement("button")
+      btn.type = "button"
+      btn.textContent = "Tiếp tục"
+      btn.onclick = () => {
+        if (!jwt && st.jwt) jwt = st.jwt
+        if (!jwt) {
+          alert("Phiên đăng nhập hết / chưa có. Đăng nhập lại rồi chọn board trong lịch sử.")
+          goStep(1)
+          return
+        }
+        resumeBoard(h.id, h.topic)
+      }
+      row.appendChild(left)
+      row.appendChild(btn)
+      histEl.appendChild(row)
+    })
+
+    // step2 shortcut
+    const skip = document.getElementById("skipToRefineBtn")
+    if (skip) skip.style.display = activeId && jwt ? "block" : "none"
+  }
+
+  async function restoreSession() {
+    const st = loadState()
+    if (st.lastLanguage) {
+      lastLanguage = st.lastLanguage
+      const lang = document.getElementById("language")
+      if (lang) lang.value = st.lastLanguage
+    }
+    if (st.lastTopic) {
+      lastTopic = st.lastTopic
+      const topic = document.getElementById("topic")
+      if (topic) topic.value = st.lastTopic
+    }
+    if (st.lastRefine) {
+      const ri = document.getElementById("refineInstruction")
+      if (ri) ri.value = st.lastRefine
+    }
+    if (st.lastEmail) {
+      lastEmail = st.lastEmail
+      const email = document.getElementById("email")
+      if (email) email.value = st.lastEmail
+    }
+    if (st.boardId) boardId = st.boardId
+    if (st.jwt) {
+      jwt = st.jwt
+      // validate token lightly
+      try {
+        const r = await fetch(`${BACKEND}/users/email-verification-status`, {
+          headers: { Authorization: `Bearer ${jwt}` },
+        })
+        if (!r.ok) {
+          jwt = ""
+          saveState({ jwt: "" })
+        }
+      } catch {
+        // network blip — keep token
+      }
+    }
+
+    renderSessionBar()
+
+    if (jwt && boardId) {
+      // Resume where user left: prefer lastStep 3 or 4
+      const step = st.lastStep >= 3 ? st.lastStep : 3
+      document.getElementById("resultMsg").textContent =
+        "Đã khôi phục phiên + board lần trước. Tiếp tục Refine hoặc Explore topic mới."
+      goStep(Math.min(step, 4))
+    } else if (jwt) {
+      goStep(2)
+    } else {
+      goStep(1)
+    }
+  }
+
+  document.querySelectorAll(".mode-opt").forEach((el) => {
+    el.addEventListener("click", () => {
+      document.querySelectorAll(".mode-opt").forEach((x) => x.classList.remove("active"))
+      el.classList.add("active")
+      el.querySelector("input").checked = true
+      const mode = el.dataset.mode
+      document.getElementById("focusField").style.display = mode === "expand" ? "block" : "none"
+    })
+  })
+
+  function goStep(n) {
+    lastStep = n
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"))
+    document.getElementById("step" + n).classList.add("active")
+    for (let i = 1; i <= 4; i++) {
+      const dot = document.getElementById("dot" + i)
+      if (!dot) continue
+      dot.className = "dot " + (i < n ? "done" : i === n ? "active" : "")
+    }
+    ;["line1", "line2", "line3"].forEach((id, idx) => {
+      const line = document.getElementById(id)
+      if (line) line.classList.toggle("done", n > idx + 1)
+    })
+    if (boardId) {
+      const label = `Board: ${boardId}`
+      const a = document.getElementById("boardIdLabel")
+      const b = document.getElementById("boardIdLabel2")
+      if (a) a.textContent = label
+      if (b) b.textContent = label
+      const open = document.getElementById("openBoard")
+      if (open) open.href = `${FRONTEND}/boards/${boardId}?research=1`
+    }
+    // persist step + draft fields
+    saveState({
+      jwt,
+      boardId,
+      lastTopic: document.getElementById("topic")?.value || lastTopic,
+      lastLanguage: document.getElementById("language")?.value || lastLanguage,
+      lastEmail,
+      lastStep: n,
+      lastRefine: document.getElementById("refineInstruction")?.value || "",
+    })
+    renderSessionBar()
+  }
+
+  function setStatus(id, type, text) {
+    const bar = document.getElementById(id)
+    bar.className = "status-bar visible " + type
+    bar.innerHTML = (type === "running" ? '<span class="spinner"></span>' : "") + `<span>${text}</span>`
+  }
+
+  function logTo(boxId, text, hi = false) {
+    const box = document.getElementById(boxId)
+    box.classList.add("visible")
+    const line = document.createElement("div")
+    line.className = "log-line" + (hi ? " hi" : "")
+    line.textContent = text
+    box.appendChild(line)
+    box.scrollTop = box.scrollHeight
+  }
+
+  function fillDemo() {
+    document.getElementById("email").value = "admin@dim0test.com"
+    document.getElementById("password").value = "dim0admin"
+  }
+
+  const DIM0_CHAT_PROMPTS = {
+    summary:
+      "Đọc toàn bộ research graph trên board này. Tóm tắt giúp tôi: " +
+      "(1) câu hỏi chính, (2) các workstream/mode, (3) 5 insight quan trọng nhất, " +
+      "(4) chỗ evidence còn yếu. Viết ngắn, dễ hiểu.",
+    focus:
+      "Chỉ làm việc với (các) node đang được chọn trong message context. " +
+      "Làm rõ bài toán ở nhánh này: thêm Source/Evidence/Finding nếu thiếu, " +
+      "nêu brand/campaign/message cụ thể, URL nếu có. Không rewrite nhánh khác.",
+    gaps:
+      "Rà soát board: claim nào thiếu Source, nhánh nào trống, mâu thuẫn nào. " +
+      "Thêm hoặc cập nhật node Unknown/Contradiction/Finding về gap. " +
+      "Không đổi taxonomy tổng thể trừ khi thật sự hỏng.",
+  }
+
+  function openBoardChat(ev) {
+    if (ev) ev.preventDefault()
+    const draft = DIM0_CHAT_PROMPTS.summary
+    stashAndOpenDim0(draft)
+    return false
+  }
+
+  function stashAndOpenDim0(draft) {
+    if (!boardId) {
+      alert("Chưa có board — Explore trước.")
+      return
+    }
+    try {
+      sessionStorage.setItem("dim0_research_chat_draft", draft || "")
+      sessionStorage.setItem("dim0_research_handoff", "1")
+    } catch {}
+    // Pass draft in URL so handoff works even across origins (launcher vs app).
+    const q = new URLSearchParams({ research: "1" })
+    if (draft) q.set("draft", draft.slice(0, 1200))
+    const url = `${FRONTEND}/boards/${boardId}?${q.toString()}`
+    window.open(url, "_blank", "noopener,noreferrer")
+  }
+
+  async function copyDim0Prompt(key) {
+    const text = DIM0_CHAT_PROMPTS[key]
+    if (!text) return
+    const hint = document.getElementById("copyHint")
+    // Best UX: open Dim0 with draft prefilled (no manual paste)
+    stashAndOpenDim0(text)
+    if (hint) {
+      hint.textContent =
+        key === "focus"
+          ? "✅ Đã mở Dim0 + điền prompt. Click 1 ô trên canvas rồi Enter."
+          : "✅ Đã mở Dim0 + điền prompt trong chat. Bấm Enter để gửi."
+    }
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // ignore
+    }
+  }
+
+  async function readSSE(response, { statusId, logBoxId, onDone, onError }) {
+    const reader = response.body.getReader()
+    const dec = new TextDecoder()
+    let buf = ""
+    let finished = false
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += dec.decode(value, { stream: true })
+      const parts = buf.split("\n\n")
+      buf = parts.pop()
+      for (const part of parts) {
+        const data = part.replace(/^data:\s*/, "").trim()
+        if (!data) continue
+        try {
+          const ev = JSON.parse(data)
+          if (ev.status === "progress" && ev.text) {
+            logTo(logBoxId, ev.text, ev.text.startsWith("**") || ev.text.startsWith("✓") || ev.text.startsWith("BOARD_"))
+          } else if (ev.status === "running" || ev.status === "starting") {
+            setStatus(statusId, "running", ev.message || `mode=${ev.mode || ""} effort=${ev.effort || ""}`)
+          } else if (ev.status === "done") {
+            finished = true
+            const extra = ev.early ? " (graph sẵn sàng)" : ""
+            const n = ev.nodes != null ? ` · ${ev.nodes} node` : ""
+            setStatus(statusId, "done", `✅ Hoàn tất!${extra}${n}`)
+            if (onDone) onDone(ev)
+          } else if (ev.status === "error") {
+            finished = true
+            setStatus(statusId, "error", "❌ " + (ev.detail || "Lỗi"))
+            if (onError) onError(ev)
+          }
+        } catch {
+          // ignore partial JSON
+        }
+      }
+    }
+    return finished
+  }
+
+  async function doLogin() {
+    const email = document.getElementById("email").value.trim()
+    const pass = document.getElementById("password").value
+    if (!email || !pass) {
+      setStatus("loginStatus", "error", "Vui lòng nhập email và mật khẩu")
+      return
+    }
+    document.getElementById("loginBtn").disabled = true
+    setStatus("loginStatus", "running", "Đang đăng nhập...")
+    try {
+      const body = new URLSearchParams({ username: email, password: pass })
+      const r = await fetch(`${BACKEND}/users/signin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      })
+      const d = await r.json()
+      if (!r.ok || d.status !== "success") {
+        setStatus("loginStatus", "error", "❌ " + (d?.data?.message || "Sai email hoặc mật khẩu"))
+        document.getElementById("loginBtn").disabled = false
+        return
+      }
+      jwt = d.data.token.access_token
+      lastEmail = email
+      saveState({ jwt, lastEmail, lastStep: boardId ? 3 : 2, boardId, lastTopic, lastLanguage })
+      setStatus("loginStatus", "done", "✅ Đăng nhập thành công! (đã lưu phiên)")
+      setTimeout(() => goStep(boardId ? 3 : 2), 400)
+    } catch (e) {
+      setStatus("loginStatus", "error", "❌ " + e.message)
+      document.getElementById("loginBtn").disabled = false
+    }
+  }
+
+  async function doGenerate() {
+    const topic = document.getElementById("topic").value.trim()
+    const scopeBrief = (document.getElementById("scopeBrief")?.value || lastScopeBrief || topic).trim()
+    lastLanguage = document.getElementById("language").value
+    lastTopic = topic || lastTopic
+    lastScopeBrief = scopeBrief
+    if (!scopeBrief) {
+      alert("Chưa có scope brief — hãy làm rõ bài toán trước")
+      return
+    }
+    if (!jwt) {
+      alert("Chưa đăng nhập")
+      goStep(1)
+      return
+    }
+    const btn = document.getElementById("generateBtn")
+    btn.disabled = true
+    document.getElementById("logBox").innerHTML = ""
+    document.getElementById("logBox").classList.remove("visible")
+
+    setStatus("generateStatus", "running", "Đang tạo board Dim0...")
+    try {
+      const label = (lastTopic || scopeBrief).length > 40
+        ? (lastTopic || scopeBrief).slice(0, 40) + "…"
+        : (lastTopic || scopeBrief)
+      const r = await fetch(`${BACKEND}/boards`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ name: label }),
+      })
+      const d = await r.json()
+      boardId = d?.data?.graph_id
+      if (!boardId) throw new Error("Không tạo được board: " + JSON.stringify(d))
+      rememberBoard({ id: boardId, topic: lastTopic || label, language: lastLanguage })
+    } catch (e) {
+      setStatus("generateStatus", "error", "❌ " + e.message)
+      btn.disabled = false
+      return
+    }
+
+    // Prefix so explore prompt treats instruction as locked scope.
+    const instruction =
+      "LOCKED RESEARCH SCOPE (obey strictly — do not expand beyond this):\n\n" +
+      scopeBrief +
+      "\n\nORIGINAL_TOPIC: " +
+      (lastTopic || "")
+
+    setStatus("generateStatus", "running", "Explore theo scope đã chốt (~có thể vài phút)...")
+    try {
+      const r = await fetch(`${BACKEND}/integration/boards/${boardId}/research`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Integration-Token": TOKEN,
+        },
+        body: JSON.stringify({
+          mode: "explore",
+          instruction: instruction.slice(0, 4000),
+          language: lastLanguage,
+          session_id: crypto.randomUUID(),
+          use_web_evidence: true,
+          budget: { max_new_nodes: 24, effort: "ultracode" },
+        }),
+      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}))
+        throw new Error(e.detail || r.statusText)
+      }
+      await readSSE(r, {
+        statusId: "generateStatus",
+        logBoxId: "logBox",
+        onDone: () => {
+          document.getElementById("resultMsg").textContent =
+            "Explore xong theo scope đã chốt. Board đã lưu — Refine / chat tiếp trên Dim0."
+          rememberBoard({ id: boardId, topic: lastTopic, language: lastLanguage })
+          showClarifyPhase("topic")
+          goStep(3)
+        },
+      })
+    } catch (e) {
+      setStatus("generateStatus", "error", "❌ " + e.message)
+    } finally {
+      btn.disabled = false
+    }
+  }
+
+  async function doRefine() {
+    if (!boardId) {
+      alert("Chưa có board — Explore trước, hoặc chọn board trong lịch sử.")
+      return
+    }
+    if (!jwt) {
+      alert("Phiên đăng nhập hết. Đăng nhập lại (board vẫn giữ trong lịch sử).")
+      goStep(1)
+      return
+    }
+    const mode = document.querySelector('input[name="mode"]:checked')?.value || "reframe"
+    const instruction = document.getElementById("refineInstruction").value.trim()
+    if (!instruction) {
+      alert("Nhập instruction refine")
+      return
+    }
+    saveState({ lastRefine: instruction, lastStep: 4, boardId, jwt })
+
+    const focusRaw = document.getElementById("focusIds").value.trim()
+    const focus_node_ids = focusRaw
+      ? focusRaw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+      : []
+
+    const btn = document.getElementById("refineBtn")
+    btn.disabled = true
+    document.getElementById("refineLogBox").innerHTML = ""
+    document.getElementById("refineLogBox").classList.remove("visible")
+    setStatus("refineStatus", "running", `Đang ${mode}...`)
+
+    const effort =
+      mode === "explore" || mode === "reframe"
+        ? "ultracode"
+        : mode === "expand"
+          ? "xhigh"
+          : "high"
+
+    try {
+      const r = await fetch(`${BACKEND}/integration/boards/${boardId}/research`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Integration-Token": TOKEN,
+        },
+        body: JSON.stringify({
+          mode,
+          instruction,
+          language: lastLanguage,
+          focus_node_ids,
+          session_id: crypto.randomUUID(),
+          use_web_evidence: document.getElementById("useWebEvidence").checked,
+          budget: { max_new_nodes: mode === "expand" ? 16 : 24, effort },
+        }),
+      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}))
+        throw new Error(typeof e.detail === "string" ? e.detail : JSON.stringify(e.detail || r.statusText))
+      }
+      await readSSE(r, {
+        statusId: "refineStatus",
+        logBoxId: "refineLogBox",
+        onDone: () => {
+          document.getElementById("resultMsg").textContent =
+            `Refine (${mode}) xong — reload canvas. Board vẫn được nhớ cho lần mở sau.`
+          rememberBoard({ id: boardId, topic: lastTopic, language: lastLanguage })
+          goStep(3)
+        },
+      })
+    } catch (e) {
+      setStatus("refineStatus", "error", "❌ " + e.message)
+    } finally {
+      btn.disabled = false
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
+      if (document.getElementById("step1").classList.contains("active") && document.activeElement?.tagName !== "TEXTAREA") {
+        doLogin()
+      }
+    }
+    if (e.key === "Enter" && e.ctrlKey) {
+      if (document.getElementById("step2").classList.contains("active")) {
+        if (document.getElementById("clarifyScopePhase")?.style.display !== "none" &&
+            document.getElementById("clarifyScopePhase")?.style.display !== "") {
+          doGenerate()
+        } else if (document.getElementById("clarifyQuestionsPhase")?.style.display === "block") {
+          doClarifyScope()
+        } else {
+          doClarifyQuestions()
+        }
+      }
+      if (document.getElementById("step4").classList.contains("active")) doRefine()
+    }
+  })
+
+  // boot
+  showClarifyPhase("topic")
+  restoreSession()
+</script>
+</body>
+</html>

@@ -1,9 +1,13 @@
-import { useState, type KeyboardEvent } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 import clsx from 'clsx'
 import { useChatStore } from '../../store/chat-store'
 import { SendMessageError } from '../../api/send-message'
 import { useSubmitPrompt } from '../../hooks/use-submit-prompt'
-import { buildMessageContext } from '../../hooks/use-message-context'
+import {
+  buildMessageContext,
+  useHasMessageContext,
+  useSelectionContextSummary,
+} from '../../hooks/use-message-context'
 import { useAppStore } from '@/store'
 import type { BillingPlan } from '@/lib/decode-jwt'
 import { SendButton } from './send-button'
@@ -32,6 +36,9 @@ export interface InputBarProps {
   enableSelectionContext?: boolean
   /** When true (e.g. on home), submitting creates a fresh board and routes to it. */
   autoCreateBoard?: boolean
+  /** One-shot prefill from research handoff. */
+  initialDraft?: string | null
+  onDraftConsumed?: () => void
 }
 
 
@@ -81,6 +88,8 @@ export const InputBar = ({
   preferChatRoute = false,
   enableSelectionContext = false,
   autoCreateBoard = false,
+  initialDraft = null,
+  onDraftConsumed,
 }: InputBarProps) => {
   const { chatId } = useChat()
 
@@ -90,6 +99,13 @@ export const InputBar = ({
   const useDeepResearch = useChatStore((state) => state.useDeepResearch)
 
   const [input, setInput] = useState<string>('')
+
+  // Apply research handoff draft once when parent passes it.
+  useEffect(() => {
+    if (!initialDraft) return
+    setInput(initialDraft)
+    onDraftConsumed?.()
+  }, [initialDraft, onDraftConsumed])
 
   // Deep Research dialog state
   const [showDRDialog, setShowDRDialog] = useState(false)
@@ -114,11 +130,23 @@ export const InputBar = ({
   // Single boolean: re-renders only when the dialog opens or closes,
   // not on title/content changes. Cheap.
   const hasActiveSurface = useBoardAppStore((s) => Boolean(s.activeNodeSurface))
+  const selectionSummary = useSelectionContextSummary({
+    enabled: enableSelectionContext,
+  })
+  const hasSelectionContext = useHasMessageContext({
+    enabled: enableSelectionContext,
+  })
   const placeholder = showBoardLimitGate
     ? "You've reached your plan's board limit"
-    : autoCreateBoard
-      ? 'Start a new board with a question…'
-      : 'Ask anything...'
+    : hasActiveSurface
+      ? "Hỏi về page này…"
+      : selectionSummary.count > 0
+        ? "Hỏi tiếp về ô đang chọn (Enter gửi)…"
+        : enableSelectionContext && attachedBoardId
+          ? "Hỏi về cả board — hoặc click 1 ô rồi hỏi riêng…"
+          : autoCreateBoard
+            ? "Start a new board with a question…"
+            : "Ask anything..."
 
   const proceedSend = async (text: string, forceNewChat = false) => {
     const trimmed = text.trim()
@@ -217,13 +245,91 @@ export const InputBar = ({
     showBoardLimitGate && 'opacity-60 hover:border-border focus-within:border-border focus-within:ring-0',
   )
   const showStarterPrompts = !chatId && !isStreaming && Boolean(attachedBoardId) && !showBoardLimitGate
+  // Research quick-actions: always when on a board with selection context enabled
+  // (launcher-built graphs). Selection-specific pills when a node is selected.
+  const showResearchPills =
+    enableSelectionContext &&
+    !isStreaming &&
+    !showBoardLimitGate &&
+    Boolean(attachedBoardId)
+
+  const researchPills = selectionSummary.count > 0
+    ? [
+      {
+        id: "expand-selected",
+        label: "Đào sâu ô này",
+        prompt:
+          "Chỉ làm việc với (các) node đang chọn trong message context. " +
+          "Làm rõ / đào sâu nhánh này: thêm Source/Evidence/Finding con + edge về focus. " +
+          "Brand/campaign/message cụ thể + URL nếu có. Không rewrite nhánh khác. " +
+          "Claim thiếu evidence → Unknown hoặc confidence thấp.",
+      },
+      {
+        id: "clarify-selected",
+        label: "Làm rõ bài toán",
+        prompt:
+          "Dựa trên node đang chọn: viết lại vấn đề đang nghiên cứu cho dễ hiểu, " +
+          "liệt kê 3 câu hỏi hẹp hơn, và đề xuất bước tiếp theo trên board " +
+          "(có thể tạo Finding/Unknown). Không xóa taxonomy hiện có.",
+      },
+      {
+        id: "gaps-selected",
+        label: "Chỗ còn thiếu",
+        prompt:
+          "Trong phạm vi node đang chọn và lân cận: claim nào thiếu Source? " +
+          "Thêm Unknown/Contradiction/Finding nếu cần. Không đụng nhánh khác.",
+      },
+    ]
+    : [
+      {
+        id: "summarize-board",
+        label: "Tóm tắt board",
+        prompt:
+          "Đọc research graph trên board. Tóm tắt: câu hỏi chính, các workstream/mode, " +
+          "5 insight quan trọng, chỗ evidence còn yếu. Ngắn, dễ hiểu.",
+      },
+      {
+        id: "find-gaps",
+        label: "Tìm gap",
+        prompt:
+          "Rà soát board: claim thiếu Source, nhánh trống, mâu thuẫn. " +
+          "Thêm Unknown/Contradiction/Finding về gap. Không đổi taxonomy tổng thể.",
+      },
+      {
+        id: "next-questions",
+        label: "Câu hỏi tiếp",
+        prompt:
+          "Từ graph hiện tại, đề xuất 3–5 câu hỏi research tiếp theo (hẹp, actionable) " +
+          "và ghi gợi ý lên board (Finding hoặc Question con) nếu phù hợp.",
+      },
+    ]
+
+  const contextChipLabel = hasActiveSurface
+    ? "@page"
+    : selectionSummary.count > 0
+      ? selectionSummary.count === 1
+        ? `@selection: ${selectionSummary.title || "node"}`
+        : `@selection (${selectionSummary.count}): ${selectionSummary.title || "nodes"}`
+      : "@board"
 
   const inboxBody = (
     <div className={inboxClass}>
       <div className="flex items-start gap-2 p-0">
         {showBoardChip && (
-          <span className="mt-1 shrink-0 rounded bg-secondary px-2 py-0.5 font-mono text-xs text-secondary-foreground">
-            {hasActiveSurface ? "@page" : "@board"}
+          <span
+            className={clsx(
+              "mt-1 shrink-0 rounded px-2 py-0.5 font-mono text-xs max-w-[14rem] truncate",
+              selectionSummary.count > 0 || hasActiveSurface
+                ? "bg-primary/15 text-primary border border-primary/25"
+                : "bg-secondary text-secondary-foreground",
+            )}
+            title={
+              hasSelectionContext
+                ? "Selected canvas context will be sent with your message"
+                : "Board-level context"
+            }
+          >
+            {contextChipLabel}
           </span>
         )}
         <TextareaAutosize
@@ -238,6 +344,25 @@ export const InputBar = ({
           autoFocus
         />
       </div>
+
+      {showResearchPills && (
+        <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground/80 shrink-0">
+            {selectionSummary.count > 0 ? "Ô đang chọn" : "Research"}
+          </span>
+          {researchPills.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              disabled={isStreaming}
+              onClick={() => void handleStarterPromptSelect(p.prompt)}
+              className="rounded-md border border-border/70 bg-background/60 px-2 py-1 text-xs font-medium text-card-foreground/80 hover:bg-sidebar disabled:opacity-50"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-1">

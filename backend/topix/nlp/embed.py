@@ -1,8 +1,15 @@
-"""Embedding class."""
+"""Embedding classes.
+
+Provides:
+  - OpenAIEmbedder: uses an OpenAI-compatible /v1/embeddings endpoint
+  - OllamaEmbedder: uses the native Ollama /api/embed endpoint (no API key needed)
+"""
 
 import asyncio
 import logging
+import os
 
+import httpx
 from openai import AsyncOpenAI
 
 from topix.config import catalog
@@ -116,3 +123,126 @@ class OpenAIEmbedder:
         embeddings = [embedding for batch in results for embedding in batch]
 
         return embeddings
+
+
+class OllamaEmbedder:
+    """Embeds text via the native Ollama /api/embed endpoint.
+
+    Requires no API key. Configured via:
+      OLLAMA_BASE_URL  (default: http://localhost:11434)
+      OLLAMA_EMBED_MODEL  (default: nomic-embed-text)
+
+    The model must be pulled locally: `ollama pull nomic-embed-text`
+    nomic-embed-text produces 768-dimensional vectors.
+    """
+
+    DEFAULT_BASE_URL = "http://localhost:11434"
+    DEFAULT_MODEL = "nomic-embed-text"
+    DEFAULT_DIMENSIONS = 768
+    TIMEOUT = 60.0
+    MAX_RETRIES = 3
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        model: str | None = None,
+        dimensions: int | None = None,
+    ):
+        """Initialise with base_url, model, and expected vector dimensions."""
+        self.base_url = (base_url or os.getenv("OLLAMA_BASE_URL", self.DEFAULT_BASE_URL)).rstrip("/")
+        self.model = model or os.getenv("OLLAMA_EMBED_MODEL", self.DEFAULT_MODEL)
+        self.dimensions = dimensions or self.DEFAULT_DIMENSIONS
+        self._client = httpx.AsyncClient(timeout=self.TIMEOUT)
+
+    @classmethod
+    def from_config(cls) -> "OllamaEmbedder":
+        """Create an OllamaEmbedder from the model catalog."""
+        resolved = catalog.available_embedding()
+        if resolved is None or resolved.provider != "ollama":
+            # Fallback to defaults from env
+            return cls()
+        return cls(
+            model=resolved.model,
+            dimensions=resolved.dim or cls.DEFAULT_DIMENSIONS,
+        )
+
+    async def health_check(self) -> bool:
+        """Return True if the Ollama embed endpoint is reachable."""
+        try:
+            payload = {"model": self.model, "input": ["health check"]}
+            resp = await self._client.post(
+                f"{self.base_url}/api/embed",
+                json=payload,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                embs = data.get("embeddings", [])
+                if embs and len(embs[0]) == self.dimensions:
+                    return True
+                logger.warning(
+                    "OllamaEmbedder health: unexpected dim got=%d want=%d",
+                    len(embs[0]) if embs else 0, self.dimensions,
+                )
+            else:
+                logger.warning("OllamaEmbedder health: HTTP %d", resp.status_code)
+        except Exception as exc:
+            logger.warning("OllamaEmbedder health error: %s", exc)
+        return False
+
+    async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Call Ollama /api/embed for one batch, returning a list of vectors."""
+        # Replace empty strings with a neutral sentinel so Ollama doesn't error
+        safe_texts = [t if t.strip() else "." for t in texts]
+        payload = {"model": self.model, "input": safe_texts}
+        last_exc: Exception | None = None
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                resp = await self._client.post(
+                    f"{self.base_url}/api/embed",
+                    json=payload,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                embeddings: list[list[float]] = data.get("embeddings", [])
+                if len(embeddings) != len(texts):
+                    raise ValueError(
+                        f"Ollama returned {len(embeddings)} embeddings for {len(texts)} inputs"
+                    )
+                # Validate dimension on first vector
+                if embeddings and len(embeddings[0]) != self.dimensions:
+                    actual_dim = len(embeddings[0])
+                    logger.warning(
+                        "OllamaEmbedder: dimension mismatch — got %d, expected %d. "
+                        "Update OLLAMA_EMBED_DIMENSIONS or recreate the Qdrant collection.",
+                        actual_dim, self.dimensions,
+                    )
+                    # Update so the rest of the run is consistent
+                    self.dimensions = actual_dim
+                return embeddings
+            except Exception as exc:
+                last_exc = exc
+                if attempt < self.MAX_RETRIES - 1:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+        raise RuntimeError(
+            f"OllamaEmbedder failed after {self.MAX_RETRIES} attempts: {last_exc}"
+        )
+
+    async def embed(
+        self,
+        texts: list[str],
+        batch_size: int = 100,
+    ) -> list[list[float]]:
+        """Embed a list of texts using the local Ollama embedding model."""
+        if not texts:
+            return []
+
+        tasks = [
+            asyncio.create_task(self._embed_batch(texts[i:i + batch_size]))
+            for i in range(0, len(texts), batch_size)
+        ]
+        results = await asyncio.gather(*tasks)
+        return [emb for batch in results for emb in batch]
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        await self._client.aclose()

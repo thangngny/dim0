@@ -37,6 +37,19 @@ const useHarnessSelectionLength = (): number =>
   )
 
 
+/** Selection id fingerprint so chip title updates when the set changes. */
+const useHarnessSelectionKey = (): string =>
+  useSyncExternalStore(
+    (cb) => {
+      const store = getCanvasStoreRef()
+      if (!store) return () => undefined
+      return store.subscribe("selection", cb)
+    },
+    () => (getCanvasStoreRef()?.getSelection() ?? []).join(","),
+    () => "",
+  )
+
+
 /**
  * Synchronously read a note from wherever it lives:
  *  - the active canvas-harness scene (covers on-canvas notes)
@@ -83,6 +96,52 @@ export const useHasMessageContext = (
     enabled &&
     (hasActiveSurface || (enableMessageBoardContextSelection && hasSelection))
   )
+}
+
+
+export type SelectionContextSummary = {
+  count: number
+  /** Short label for the first selected note (truncated). */
+  title: string
+  /** First selected node id when count > 0. */
+  primaryId?: string
+}
+
+
+/**
+ * Reactive summary of the current canvas selection for chip UI
+ * (`@selection (n): title`). Re-subscribes on selection channel only.
+ */
+export const useSelectionContextSummary = (
+  { enabled = true }: { enabled?: boolean } = {},
+): SelectionContextSummary => {
+  const enableMessageBoardContextSelection = useChatStore(
+    (state) => state.enableMessageBoardContextSelection,
+  )
+  const selectionKey = useHarnessSelectionKey()
+  const ids = selectionKey ? selectionKey.split(",").filter(Boolean) : []
+  const count =
+    enabled && enableMessageBoardContextSelection ? ids.length : 0
+
+  if (count === 0) {
+    return { count: 0, title: "" }
+  }
+
+  const store = getCanvasStoreRef()
+  if (!store) return { count, title: "" }
+
+  const firstId = ids[0]
+  if (!firstId) return { count, title: "" }
+
+  const node = store.getNode(firstId as NodeId)
+  if (!node) return { count, title: "", primaryId: firstId }
+
+  const note = nodeToNote(node)
+  const label = (note.label?.markdown ?? "").trim()
+  const content = (note.content?.markdown ?? "").trim()
+  const raw = label || content.split("\n")[0] || firstId
+  const title = raw.length > 36 ? `${raw.slice(0, 36)}…` : raw
+  return { count, title, primaryId: firstId }
 }
 
 

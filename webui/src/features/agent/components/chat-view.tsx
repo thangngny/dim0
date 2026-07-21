@@ -25,6 +25,9 @@ type ChatProps = {
   preferChatRoute?: boolean
   enableSelectionContext?: boolean
   autoCreateBoard?: boolean
+  /** Prefill composer once (research handoff). */
+  initialDraft?: string | null
+  onDraftConsumed?: () => void
 }
 
 const formatChatDate = (value?: string) => {
@@ -163,6 +166,8 @@ const ChatBody = ({
   preferChatRoute = false,
   enableSelectionContext = false,
   autoCreateBoard = false,
+  initialDraft = null,
+  onDraftConsumed,
 }: ChatProps) => {
   const { chatId, setChatId } = useChat()
   const userId = useAppStore(s => s.userId)
@@ -267,6 +272,8 @@ const ChatBody = ({
         preferChatRoute={preferChatRoute}
         enableSelectionContext={enableSelectionContext}
         autoCreateBoard={autoCreateBoard}
+        initialDraft={initialDraft}
+        onDraftConsumed={onDraftConsumed}
       />
     </div>
   )

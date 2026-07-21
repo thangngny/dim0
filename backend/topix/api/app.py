@@ -19,6 +19,7 @@ from topix.api.router import (
     documents,
     files,
     finance,
+    integration,
     mini_app_state,
     sharing,
     subscriptions,
@@ -77,9 +78,24 @@ def create_app(stage: StageEnum):
         await app.password_reset_store.open(app.pg_pool)
         app.mini_app_state_store = MiniAppStateStore()
         await app.mini_app_state_store.open(app.pg_pool)
-        app.subscription_store = SubscriptionStore()
-        await app.subscription_store.open()
-        app.parser_pipeline = ParsingPipeline()
+        try:
+            app.subscription_store = SubscriptionStore()
+            await app.subscription_store.open()
+        except Exception as _sub_err:
+            # Newsfeed/subscription features require LLM API keys.
+            # Degrade gracefully: canvas, board, collab, and integration all
+            # continue to work; only subscription-based newsfeed is disabled.
+            logger.warning(
+                "SubscriptionStore failed to init (newsfeed disabled): %s", _sub_err
+            )
+            app.subscription_store = None
+        try:
+            app.parser_pipeline = ParsingPipeline()
+        except Exception as _parse_err:
+            logger.warning(
+                "ParsingPipeline failed to init (document parsing disabled): %s", _parse_err
+            )
+            app.parser_pipeline = None
 
         # Initialize Redis
         app.redis_store = RedisStore.from_config()
@@ -143,6 +159,7 @@ def create_app(stage: StageEnum):
     app.include_router(finance.router)
     app.include_router(files.router)
     app.include_router(documents.router)
+    app.include_router(integration.router)
 
     return app
 
