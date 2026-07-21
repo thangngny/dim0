@@ -8,10 +8,16 @@ from agents import FunctionTool, RunContextWrapper
 
 from topix.agents.datatypes.context import Context
 from topix.agents.datatypes.outputs import (
+    ChangeKindOutput,
     CreateNoteOutput,
+    DeleteSubtreeOutput,
     EditNoteOutput,
     GetNoteOutput,
     LinkNotesOutput,
+    MergeNotesOutput,
+    RelayoutOutput,
+    ReparentNoteOutput,
+    SplitNoteOutput,
     WriteNoteOutput,
 )
 from topix.agents.datatypes.tools import AgentToolName
@@ -446,4 +452,219 @@ def create_link_notes_tool(
         link_notes,
         tool_name=AgentToolName.LINK_NOTES,
         tool_description=None,
+    )
+
+
+def create_change_note_kind_tool(
+    graph_store: GraphStore,
+    graph_uid: str,
+    agent_bridge: AgentBoardBridge | None = None,
+) -> FunctionTool:
+    """Build a change-kind tool bound to the current board scope."""
+
+    async def change_note_kind(
+        _wrapper: RunContextWrapper[Context],
+        note_id: str,
+        kind: str,
+    ) -> ChangeKindOutput:
+        """Change the research kind of an existing note (re-style shape + color).
+
+        Use this to refine the board: turn a Question into a Finding once
+        answered, a Hypothesis into a Decision once chosen, etc. Always
+        identify the note by `note_id`, never by label.
+
+        Args:
+            note_id (str): Exact id of the note to re-style.
+            kind (str): New kind — one of question, workstream, source, evidence,
+                finding, hypothesis, contradiction, unknown, alternative,
+                decision, summary, note.
+        """
+        if agent_bridge is None:
+            raise ValueError("change_note_kind requires a live agent bridge.")
+        updated = await agent_bridge.change_note_kind(
+            board_id=graph_uid, node_id=note_id, kind=kind, user_uid=None)
+        if updated is None:
+            raise ValueError(f"Note {note_id} was not found.")
+        return ChangeKindOutput(note_id=updated.id, graph_uid=graph_uid, kind=kind)
+
+    return ToolHandler.convert_func_to_tool(
+        change_note_kind, tool_name=AgentToolName.CHANGE_NOTE_KIND, tool_description=None,
+    )
+
+
+def create_reparent_note_tool(
+    graph_store: GraphStore, graph_uid: str, agent_bridge: AgentBoardBridge | None = None,
+) -> FunctionTool:
+    """Build a reparent tool bound to the current board scope."""
+
+    async def reparent_note(
+        _wrapper: RunContextWrapper[Context],
+        note_id: str,
+        parent_id: str | None = None,
+    ) -> ReparentNoteOutput:
+        """Move a note under a different parent (or to the board root when parent_id is None).
+
+        Use this to restructure the tree hierarchy. Cycles are rejected.
+
+        Args:
+            note_id (str): Exact id of the note to move.
+            parent_id (str | None): New parent note id, or None to move to the board root.
+        """
+        if agent_bridge is None:
+            raise ValueError("reparent_note requires a live agent bridge.")
+        updated = await agent_bridge.reparent_note(
+            board_id=graph_uid, node_id=note_id, new_parent_id=parent_id, user_uid=None)
+        if updated is None:
+            raise ValueError(f"Note {note_id} was not found.")
+        return ReparentNoteOutput(note_id=updated.id, graph_uid=graph_uid, parent_id=updated.parent_id)
+
+    return ToolHandler.convert_func_to_tool(
+        reparent_note, tool_name=AgentToolName.REPARENT_NOTE, tool_description=None,
+    )
+
+
+def create_delete_subtree_tool(
+    graph_store: GraphStore, graph_uid: str, agent_bridge: AgentBoardBridge | None = None,
+) -> FunctionTool:
+    """Build a delete-subtree tool bound to the current board scope."""
+
+    async def delete_subtree(
+        _wrapper: RunContextWrapper[Context],
+        note_id: str,
+        confirm: bool = False,
+    ) -> DeleteSubtreeOutput | str:
+        """Delete a note and all its descendants plus internal edges.
+
+        Destructive: ALWAYS call with confirm=False first to show the user a
+        preview (affected node/edge counts), ask for confirmation, then call
+        again with confirm=True.
+
+        Args:
+            note_id (str): Root of the subtree to delete.
+            confirm (bool): False = preview only; True = execute the delete.
+        """
+        if agent_bridge is None:
+            raise ValueError("delete_subtree requires a live agent bridge.")
+        result = await agent_bridge.delete_subtree(
+            board_id=graph_uid, node_id=note_id, confirm=confirm, user_uid=None)
+        if not confirm:
+            return (f"Preview: will delete {result['preview']['nodes']} node(s) "
+                    f"and {result['preview']['edges']} edge(s). "
+                    f"Confirm with the user before re-calling with confirm=True.")
+        return DeleteSubtreeOutput(
+            graph_uid=graph_uid,
+            deleted_nodes=result["deleted"]["nodes"],
+            deleted_edges=result["deleted"]["edges"],
+        )
+
+    return ToolHandler.convert_func_to_tool(
+        delete_subtree, tool_name=AgentToolName.DELETE_SUBTREE, tool_description=None,
+    )
+
+
+def create_merge_notes_tool(
+    graph_store: GraphStore, graph_uid: str, agent_bridge: AgentBoardBridge | None = None,
+) -> FunctionTool:
+    """Build a merge-notes tool bound to the current board scope."""
+
+    async def merge_notes(
+        _wrapper: RunContextWrapper[Context],
+        node_ids: list[str],
+        target_id: str,
+        confirm: bool = False,
+    ) -> MergeNotesOutput | str:
+        """Fold several notes into one target note (append content, repoint edges, delete the rest).
+
+        Destructive: call with confirm=False first to preview, then confirm=True.
+
+        Args:
+            node_ids (list[str]): All note ids to merge, including the target.
+            target_id (str): The note id that absorbs the others (must be in node_ids).
+            confirm (bool): False = preview; True = execute.
+        """
+        if agent_bridge is None:
+            raise ValueError("merge_notes requires a live agent bridge.")
+        result = await agent_bridge.merge_notes(
+            board_id=graph_uid, node_ids=node_ids, target_id=target_id,
+            confirm=confirm, user_uid=None)
+        if not confirm:
+            p = result["preview"]
+            return (f"Preview: absorb {p['absorbed']} note(s) into target, "
+                    f"repoint {p['edges_repointed']} edge(s), drop {p['edges_dropped']} self-loop(s). "
+                    f"Confirm with the user before re-calling with confirm=True.")
+        return MergeNotesOutput(target_id=target_id, graph_uid=graph_uid, absorbed=result["deleted"]["nodes"])
+
+    return ToolHandler.convert_func_to_tool(
+        merge_notes, tool_name=AgentToolName.MERGE_NOTES, tool_description=None,
+    )
+
+
+def create_split_note_tool(
+    graph_store: GraphStore, graph_uid: str, agent_bridge: AgentBoardBridge | None = None,
+) -> FunctionTool:
+    """Build a split-note tool bound to the current board scope."""
+
+    async def split_note(
+        _wrapper: RunContextWrapper[Context],
+        note_id: str,
+        parts: list[str],
+        confirm: bool = False,
+        delete_original: bool = True,
+    ) -> SplitNoteOutput | str:
+        """Split one note into several sibling notes from content chunks.
+
+        Destructive: call with confirm=False first to preview, then confirm=True.
+
+        Args:
+            note_id (str): The note to split.
+            parts (list[str]): Content chunk for each new note.
+            confirm (bool): False = preview; True = execute.
+            delete_original (bool): Whether to delete the original note (default True).
+        """
+        if agent_bridge is None:
+            raise ValueError("split_note requires a live agent bridge.")
+        result = await agent_bridge.split_note(
+            board_id=graph_uid, node_id=note_id, parts=parts,
+            confirm=confirm, delete_original=delete_original, user_uid=None)
+        if not confirm:
+            p = result["preview"]
+            return (f"Preview: create {p['new_nodes']} new note(s), repoint "
+                    f"{p['inbound_edges_repointed']} inbound edge(s), "
+                    f"delete_original={p['delete_original']}. "
+                    f"Confirm with the user before re-calling with confirm=True.")
+        return SplitNoteOutput(graph_uid=graph_uid, created_ids=result["created_ids"],
+                               original_deleted=result["delete_original"])
+
+    return ToolHandler.convert_func_to_tool(
+        split_note, tool_name=AgentToolName.SPLIT_NOTE, tool_description=None,
+    )
+
+
+def create_relayout_tool(
+    graph_store: GraphStore, graph_uid: str, agent_bridge: AgentBoardBridge | None = None,
+) -> FunctionTool:
+    """Build a relayout tool bound to the current board scope."""
+
+    async def relayout_board(
+        _wrapper: RunContextWrapper[Context],
+        scope_ids: list[str] | None = None,
+        mode: str = "default",
+    ) -> RelayoutOutput:
+        """Re-run auto-layout for a set of nodes or the whole board.
+
+        Use this to tidy a messy graph after structural edits. mode="research"
+        uses the hierarchical research layout; otherwise the default layout.
+
+        Args:
+            scope_ids (list[str] | None): Node ids to relayout, or None for the whole board.
+            mode (str): "default" or "research".
+        """
+        if agent_bridge is None:
+            raise ValueError("relayout requires a live agent bridge.")
+        result = await agent_bridge.relayout(
+            board_id=graph_uid, scope_ids=scope_ids, mode=mode)
+        return RelayoutOutput(graph_uid=graph_uid, moved=result["count"], mode=result["mode"])
+
+    return ToolHandler.convert_func_to_tool(
+        relayout_board, tool_name=AgentToolName.RELAYOUT_BOARD, tool_description=None,
     )
