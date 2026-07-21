@@ -482,6 +482,36 @@ class AgentBoardBridge:
         await self._broadcast(board_id=board_id, ops=ops)
         return {"created_ids": new_ids, "delete_original": delete_original}
 
+    async def relayout(
+        self,
+        *,
+        board_id: str,
+        scope_ids: list[str] | None = None,
+        mode: str = "default",
+    ) -> dict:
+        """Re-run auto-layout for a set of nodes (or the whole board).
+
+        `mode="research"` uses the hierarchical research layout; otherwise
+        the default note layout. Returns the moved-node ids and count.
+        Broadcast of position updates happens inside the layout helpers
+        (they patch via this bridge where applicable).
+        """
+        from topix.agents.notes.layout import rearrange_created_notes
+        from topix.integrations.research_layout import apply_research_layout
+
+        if mode == "research":
+            moved = await apply_research_layout(
+                graph_store=self._graph_store, bridge=self,
+                board_id=board_id, created_ids=scope_ids or [],
+            )
+            return {"moved": moved, "count": len(moved), "mode": "research"}
+
+        moved = await rearrange_created_notes(
+            graph_store=self._graph_store, graph_uid=board_id,
+            created_ids=scope_ids or [], created_link_ids=None, agent_bridge=self,
+        )
+        return {"moved": moved, "count": len(moved), "mode": "default"}
+
     # ------------------------------------------------------------------
 
     async def _broadcast(self, *, board_id: str, ops: list[dict[str, Any]]) -> None:

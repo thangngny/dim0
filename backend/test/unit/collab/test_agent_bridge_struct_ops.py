@@ -394,6 +394,22 @@ async def test_split_note_rejects_empty_parts(graph_store, board_id, agent_bridg
             board_id=board_id, node_id=original.id, parts=[], confirm=True)
 
 
+@pytest.mark.asyncio
+async def test_relayout_default_mode_runs(graph_store, board_id, agent_bridge):
+    """`relayout` delegates to the default note layout helper and returns its moved list.
+
+    Asserts only the return shape (`moved` is a list) — the real
+    `rearrange_created_notes` runs against the in-memory fixture and
+    reports whichever nodes it repositioned (possibly empty).
+    """
+    a = await _make_note(graph_store, board_id, label="A")
+    b = await _make_note(graph_store, board_id, label="B")
+    result = await agent_bridge.relayout(
+        board_id=board_id, scope_ids=[a.id, b.id], mode="default")
+    assert "moved" in result
+    assert isinstance(result["moved"], list)
+
+
 class _FakeSocket:
     """Stand-in for fastapi.WebSocket — only `send_text` is exercised."""
 
