@@ -365,6 +365,84 @@ class ImageGenerationOutput(BaseModel):
         return f"{len(self.image_urls)} images"
 
 
+class ChangeKindOutput(BaseModel):
+    """Output from the change-note-kind tool."""
+
+    type: Literal["change_note_kind"] = "change_note_kind"
+    note_id: Annotated[str, "The note id whose kind was changed."]
+    graph_uid: Annotated[str, "The board id where the note belongs."]
+    kind: Annotated[str, "The new research kind (question/finding/…)."]
+
+    def to_compact_repr(self) -> str:
+        """Return a compact history-safe summary."""
+        return f'kind={self.kind} note_id="{self.note_id}"'
+
+
+class ReparentNoteOutput(BaseModel):
+    """Output from the reparent-note tool."""
+
+    type: Literal["reparent_note"] = "reparent_note"
+    note_id: Annotated[str, "The note id that was moved."]
+    graph_uid: Annotated[str, "The board id where the note belongs."]
+    parent_id: Annotated[str | None, "The new parent note id, or None for board root."] = None
+
+    def to_compact_repr(self) -> str:
+        """Return a compact history-safe summary."""
+        return f'reparented note_id="{self.note_id}" under {self.parent_id}'
+
+
+class DeleteSubtreeOutput(BaseModel):
+    """Output from the delete-subtree tool."""
+
+    type: Literal["delete_subtree"] = "delete_subtree"
+    graph_uid: Annotated[str, "The board id where the subtree lived."]
+    deleted_nodes: Annotated[int, "Number of nodes deleted (root + descendants)."]
+    deleted_edges: Annotated[int, "Number of edges deleted."] = 0
+
+    def to_compact_repr(self) -> str:
+        """Return a compact history-safe summary."""
+        return f'deleted subtree: {self.deleted_nodes} nodes, {self.deleted_edges} edges'
+
+
+class MergeNotesOutput(BaseModel):
+    """Output from the merge-notes tool."""
+
+    type: Literal["merge_notes"] = "merge_notes"
+    target_id: Annotated[str, "The note id that absorbed the others."]
+    graph_uid: Annotated[str, "The board id where the notes belonged."]
+    absorbed: Annotated[int, "Number of notes folded into the target."]
+
+    def to_compact_repr(self) -> str:
+        """Return a compact history-safe summary."""
+        return f'merged {self.absorbed} into note_id="{self.target_id}"'
+
+
+class SplitNoteOutput(BaseModel):
+    """Output from the split-note tool."""
+
+    type: Literal["split_note"] = "split_note"
+    graph_uid: Annotated[str, "The board id where the note belonged."]
+    created_ids: Annotated[list[str], "The new note ids created from the split."]
+    original_deleted: Annotated[bool, "Whether the original note was deleted."] = True
+
+    def to_compact_repr(self) -> str:
+        """Return a compact history-safe summary."""
+        return f'split into {len(self.created_ids)} notes'
+
+
+class RelayoutOutput(BaseModel):
+    """Output from the relayout tool."""
+
+    type: Literal["relayout_board"] = "relayout_board"
+    graph_uid: Annotated[str, "The board id that was relaid out."]
+    moved: Annotated[int, "Number of nodes moved."]
+    mode: Annotated[str, "Layout mode used (default/research)."] = "default"
+
+    def to_compact_repr(self) -> str:
+        """Return a compact history-safe summary."""
+        return f'relayout {self.mode}: moved {self.moved}'
+
+
 type ToolOutput = Union[
     str,
     CodeInterpreterOutput,
@@ -387,5 +465,11 @@ type ToolOutput = Union[
     DisplayWeatherWidgetOutput,
     DisplayImageSearchWidgetOutput,
     ImageGenerationOutput,
+    ChangeKindOutput,
+    ReparentNoteOutput,
+    DeleteSubtreeOutput,
+    MergeNotesOutput,
+    SplitNoteOutput,
+    RelayoutOutput,
     DrawnGraph,
 ]

@@ -38,6 +38,13 @@ class AgentToolName(StrEnum):
 
     IMAGE_GENERATION = "image_generation"
 
+    CHANGE_NOTE_KIND = "change_note_kind"
+    REPARENT_NOTE = "reparent_note"
+    DELETE_SUBTREE = "delete_subtree"
+    MERGE_NOTES = "merge_notes"
+    SPLIT_NOTE = "split_note"
+    RELAYOUT_BOARD = "relayout_board"
+
 
 def to_display_output(tool_name: str) -> bool:
     """Check if the tool is for displaying output."""
@@ -92,4 +99,10 @@ tool_descriptions = {
         "the parallel write_note + link_notes calls"
     ),
     AgentToolName.IMAGE_GENERATION: "Generate images based on text prompts",
+    AgentToolName.CHANGE_NOTE_KIND: "Change a note's research kind (question/finding/source/evidence/hypothesis/contradiction/unknown/alternative/decision/summary). Re-styles shape and color.",
+    AgentToolName.REPARENT_NOTE: "Move a note under a different parent note (or to the board root). Rejects cycles.",
+    AgentToolName.DELETE_SUBTREE: "Delete a note plus all its descendants and internal edges. Always confirm=False first to preview, then confirm=True after the user agrees.",
+    AgentToolName.MERGE_NOTES: "Fold several notes into one target note (append content, repoint edges, delete the rest). confirm=False first, then confirm=True.",
+    AgentToolName.SPLIT_NOTE: "Split one note into several sibling notes from content chunks. confirm=False first, then confirm=True.",
+    AgentToolName.RELAYOUT_BOARD: "Re-run auto-layout for a branch or the whole board to tidy the graph.",
 }
