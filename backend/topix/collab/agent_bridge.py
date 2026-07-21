@@ -221,6 +221,46 @@ class AgentBoardBridge:
             board_id=board_id, node_id=node_id, data=data, user_uid=user_uid,
         )
 
+    async def reparent_note(
+        self,
+        *,
+        board_id: str,
+        node_id: str,
+        new_parent_id: str | None,
+        user_uid: str | None = None,
+    ) -> Note | None:
+        """Move a note under a new parent (or to the board root when None).
+
+        Rejects cycles: `new_parent_id` must not be `node_id` or one of its
+        descendants. Delegates persist + `node.update` (carrying the new
+        `parent_id` via `patch_data_to_wire_patch`) to `patch_note`.
+        """
+        notes = await self._graph_store.get_nodes([node_id])
+        if not notes:
+            return None
+        note = notes[0]
+        if note.graph_uid != board_id:
+            raise ValueError("Note does not belong to the current board scope.")
+
+        if new_parent_id is not None:
+            if new_parent_id == node_id:
+                raise ValueError("A node cannot be its own parent.")
+            # Cycle check: new_parent must not be node_id or a descendant.
+            descendants = await self._graph_store.get_nodes_descendants([node_id])
+            descendant_ids = {n.id for n in descendants}
+            if new_parent_id in descendant_ids:
+                raise ValueError(
+                    "Cannot reparent under a descendant — that would create a cycle."
+                )
+            parent_notes = await self._graph_store.get_nodes([new_parent_id])
+            if not parent_notes or parent_notes[0].graph_uid != board_id:
+                raise ValueError("New parent does not belong to the current board scope.")
+
+        data: dict[str, Any] = {"parent_id": new_parent_id}
+        return await self.patch_note(
+            board_id=board_id, node_id=node_id, data=data, user_uid=user_uid,
+        )
+
     # ------------------------------------------------------------------
 
     async def _broadcast(self, *, board_id: str, ops: list[dict[str, Any]]) -> None:

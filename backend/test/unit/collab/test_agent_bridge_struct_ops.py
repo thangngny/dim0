@@ -79,6 +79,35 @@ class _MemGraphStore:
         self.notes[node_id] = updated
         return updated
 
+    async def get_nodes_descendants(self, node_ids: list[str]) -> list[Note]:
+        """Multi-root BFS over `parent_id` — roots excluded from result.
+
+        Mirrors `GraphStore.get_nodes_descendants` semantics: visit-once,
+        descendants only (roots already known to the caller).
+        """
+        if not node_ids:
+            return []
+        seeds = [self.notes[nid] for nid in node_ids if nid in self.notes]
+        if not seeds:
+            return []
+        visited: set[str] = set(node_ids)
+        frontier: list[str] = list(node_ids)
+        out: list[Note] = []
+        while frontier:
+            children = [
+                n for n in self.notes.values()
+                if n.parent_id in frontier and n.id not in visited
+            ]
+            next_frontier: list[str] = []
+            for child in children:
+                if child.id in visited:
+                    continue
+                visited.add(child.id)
+                out.append(child)
+                next_frontier.append(child.id)
+            frontier = next_frontier
+        return out
+
 
 def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge `patch` into `base` (mirrors GraphStore._deep_merge_dict)."""
@@ -156,3 +185,24 @@ async def test_change_note_kind_updates_shape_and_colors(
     # finding -> SOFT_DIAMOND shape, emerald family
     assert updated.style.type.value == "soft-diamond"
     assert updated.style.background_color  # non-default color set
+
+
+@pytest.mark.asyncio
+async def test_reparent_note_moves_parent(graph_store, board_id, agent_bridge):
+    parent = await _make_note(graph_store, board_id, label="P")
+    child = await _make_note(graph_store, board_id, label="C")
+    updated = await agent_bridge.reparent_note(
+        board_id=board_id, node_id=child.id, new_parent_id=parent.id)
+    assert updated.parent_id == parent.id
+
+
+@pytest.mark.asyncio
+async def test_reparent_note_rejects_cycle(graph_store, board_id, agent_bridge):
+    parent = await _make_note(graph_store, board_id, label="P")
+    child = await _make_note(graph_store, board_id, label="C")
+    await agent_bridge.reparent_note(
+        board_id=board_id, node_id=child.id, new_parent_id=parent.id)
+    # moving parent under child would create a cycle
+    with pytest.raises(ValueError):
+        await agent_bridge.reparent_note(
+            board_id=board_id, node_id=parent.id, new_parent_id=child.id)
