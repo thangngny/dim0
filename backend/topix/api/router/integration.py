@@ -740,10 +740,6 @@ class ReparentRequest(BaseModel):
     parent_id: str | None = None
 
 
-class SubtreeDeleteRequest(BaseModel):
-    confirm: bool = False
-
-
 class MergeRequest(BaseModel):
     node_ids: list[str]
     target_id: str
@@ -827,6 +823,14 @@ async def merge_nodes_ep(
     _: None = Depends(_verify_token),
 ):
     """Merge several nodes into one target node (two-phase via body.confirm)."""
+    from topix.integrations.research_scope import assert_can_mutate
+
+    # Guard every node touched by the merge (target_id is in node_ids).
+    for nid in body.node_ids:
+        try:
+            assert_can_mutate(board_id, nid)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     bridge: AgentBoardBridge = _bridge(request)
     try:
         result = await bridge.merge_notes(
@@ -843,11 +847,22 @@ async def split_node_ep(
     _: None = Depends(_verify_token),
 ):
     """Split one node into several sibling notes (two-phase via body.confirm)."""
-    from topix.integrations.research_scope import assert_can_mutate
+    from topix.integrations.research_scope import (
+        assert_can_create,
+        assert_can_mutate,
+        note_created,
+    )
     try:
         assert_can_mutate(board_id, node_id)
     except ValueError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # Expand-scope create budget for the new split notes.
+    try:
+        assert_can_create(board_id, len(body.parts))
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # Redact each chunk before handing to the bridge.
+    body.parts = [redact_content(p)[0] for p in body.parts]
     bridge: AgentBoardBridge = _bridge(request)
     try:
         result = await bridge.split_note(
@@ -855,6 +870,10 @@ async def split_node_ep(
             confirm=body.confirm, delete_original=body.delete_original, user_uid=None)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Register newly created notes with the active expand scope.
+    created_ids = result.get("created_ids") if isinstance(result, dict) else None
+    if created_ids:
+        note_created(board_id, created_ids)
     return result
 
 
