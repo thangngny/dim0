@@ -732,6 +732,132 @@ async def research_clarify(
     return await run_clarify(body)
 
 
+class SetKindRequest(BaseModel):
+    kind: str
+
+
+class ReparentRequest(BaseModel):
+    parent_id: str | None = None
+
+
+class SubtreeDeleteRequest(BaseModel):
+    confirm: bool = False
+
+
+class MergeRequest(BaseModel):
+    node_ids: list[str]
+    target_id: str
+    confirm: bool = False
+
+
+class SplitRequest(BaseModel):
+    parts: list[str]
+    confirm: bool = False
+    delete_original: bool = True
+
+
+@router.post("/boards/{board_id}/nodes/{node_id}:set-kind")
+async def set_node_kind(
+    board_id: str, node_id: str, body: SetKindRequest, request: Request,
+    _: None = Depends(_verify_token),
+):
+    """Re-style a node to a research kind (shape + color + size)."""
+    from topix.integrations.research_scope import assert_can_mutate
+    try:
+        assert_can_mutate(board_id, node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    bridge: AgentBoardBridge = _bridge(request)
+    updated = await bridge.change_note_kind(
+        board_id=board_id, node_id=node_id, kind=body.kind, user_uid=None)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return {"node_id": node_id, "kind": body.kind, "updated": True}
+
+
+@router.post("/boards/{board_id}/nodes/{node_id}:reparent")
+async def reparent_node(
+    board_id: str, node_id: str, body: ReparentRequest, request: Request,
+    _: None = Depends(_verify_token),
+):
+    """Move a node under a new parent (or to the board root)."""
+    from topix.integrations.research_scope import assert_can_mutate
+    try:
+        assert_can_mutate(board_id, node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    bridge: AgentBoardBridge = _bridge(request)
+    try:
+        updated = await bridge.reparent_note(
+            board_id=board_id, node_id=node_id, new_parent_id=body.parent_id, user_uid=None)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return {"node_id": node_id, "parent_id": updated.parent_id, "updated": True}
+
+
+@router.delete("/boards/{board_id}/nodes/{node_id}:subtree")
+async def delete_subtree_ep(
+    board_id: str, node_id: str, request: Request,
+    _: None = Depends(_verify_token),
+):
+    """Preview (default) then delete a node + its descendants.
+
+    Pass `?confirm=true` to execute. Without it, returns the affected counts.
+    """
+    from topix.integrations.research_scope import assert_can_mutate
+    try:
+        assert_can_mutate(board_id, node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    bridge: AgentBoardBridge = _bridge(request)
+    confirm = request.query_params.get("confirm", "").lower() == "true"
+    try:
+        result = await bridge.delete_subtree(
+            board_id=board_id, node_id=node_id, confirm=confirm, user_uid=None)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return result
+
+
+@router.post("/boards/{board_id}/nodes:merge")
+async def merge_nodes_ep(
+    board_id: str, body: MergeRequest, request: Request,
+    _: None = Depends(_verify_token),
+):
+    """Merge several nodes into one target node (two-phase via body.confirm)."""
+    bridge: AgentBoardBridge = _bridge(request)
+    try:
+        result = await bridge.merge_notes(
+            board_id=board_id, node_ids=body.node_ids, target_id=body.target_id,
+            confirm=body.confirm, user_uid=None)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return result
+
+
+@router.post("/boards/{board_id}/nodes/{node_id}:split")
+async def split_node_ep(
+    board_id: str, node_id: str, body: SplitRequest, request: Request,
+    _: None = Depends(_verify_token),
+):
+    """Split one node into several sibling notes (two-phase via body.confirm)."""
+    from topix.integrations.research_scope import assert_can_mutate
+    try:
+        assert_can_mutate(board_id, node_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    bridge: AgentBoardBridge = _bridge(request)
+    try:
+        result = await bridge.split_note(
+            board_id=board_id, node_id=node_id, parts=body.parts,
+            confirm=body.confirm, delete_original=body.delete_original, user_uid=None)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return result
+
+
 @router.post("/boards/{board_id}/research")
 async def run_board_research(
     board_id: str,
