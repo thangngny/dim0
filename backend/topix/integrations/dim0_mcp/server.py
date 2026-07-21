@@ -295,6 +295,110 @@ TOOLS = [
         },
     },
     {
+        "name": "dim0_set_node_kind",
+        "description": (
+            "Re-style a board node to a research kind "
+            "(question/finding/source/evidence/hypothesis/contradiction/unknown/"
+            "alternative/decision/summary)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "board_id": {"type": "string", "description": "Board ID (optional, uses default)."},
+                "node_id": {"type": "string", "description": "Exact Dim0 node ID to re-style."},
+                "kind": {"type": "string", "description": "New kind."},
+            },
+            "required": ["node_id", "kind"],
+        },
+    },
+    {
+        "name": "dim0_reparent_node",
+        "description": (
+            "Move a node under a new parent (or to the board root if parent_id is null)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "board_id": {"type": "string", "description": "Board ID (optional, uses default)."},
+                "node_id": {"type": "string", "description": "Exact Dim0 node ID to reparent."},
+                "parent_id": {
+                    "type": "string",
+                    "description": "New parent node ID, or null to move to board root.",
+                },
+            },
+            "required": ["node_id"],
+        },
+    },
+    {
+        "name": "dim0_delete_subtree",
+        "description": (
+            "Preview (default) or delete a node + its descendants. "
+            "Pass confirm=true to execute; without it, returns affected counts."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "board_id": {"type": "string", "description": "Board ID (optional, uses default)."},
+                "node_id": {"type": "string", "description": "Exact Dim0 node ID whose subtree to delete."},
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Set true to execute the deletion; omit/false for a preview.",
+                },
+            },
+            "required": ["node_id"],
+        },
+    },
+    {
+        "name": "dim0_merge_nodes",
+        "description": (
+            "Merge several nodes into one target node (two-phase via confirm)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "board_id": {"type": "string", "description": "Board ID (optional, uses default)."},
+                "node_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Node IDs to merge into the target.",
+                },
+                "target_id": {"type": "string", "description": "Node ID that absorbs the others."},
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Set true to execute the merge; omit/false for a preview.",
+                },
+            },
+            "required": ["node_ids", "target_id"],
+        },
+    },
+    {
+        "name": "dim0_split_node",
+        "description": (
+            "Split one node into several sibling notes (two-phase via confirm)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "board_id": {"type": "string", "description": "Board ID (optional, uses default)."},
+                "node_id": {"type": "string", "description": "Exact Dim0 node ID to split."},
+                "parts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Content for each new sibling note.",
+                },
+                "confirm": {
+                    "type": "boolean",
+                    "description": "Set true to execute the split; omit/false for a preview.",
+                },
+                "delete_original": {
+                    "type": "boolean",
+                    "description": "Whether to delete the original node after split (default: true).",
+                },
+            },
+            "required": ["node_id", "parts"],
+        },
+    },
+    {
         "name": "dim0_upsert_research_graph",
         "description": (
             "Primary batch tool: create an entire research graph phase in one call. "
@@ -517,6 +621,64 @@ async def handle_dim0_upsert_research_graph(args: dict) -> dict:
     }
 
 
+async def handle_dim0_set_node_kind(args: dict) -> dict:
+    """Re-style a node to a new research kind via the integration API."""
+    board_id = args.get("board_id") or DEFAULT_BOARD_ID
+    return await _api(
+        "POST",
+        f"/integration/boards/{board_id}/nodes/{args['node_id']}:set-kind",
+        json={"kind": args["kind"]},
+    )
+
+
+async def handle_dim0_reparent_node(args: dict) -> dict:
+    """Move a node under a new parent (or to board root if parent_id is null)."""
+    board_id = args.get("board_id") or DEFAULT_BOARD_ID
+    return await _api(
+        "POST",
+        f"/integration/boards/{board_id}/nodes/{args['node_id']}:reparent",
+        json={"parent_id": args.get("parent_id")},
+    )
+
+
+async def handle_dim0_delete_subtree(args: dict) -> dict:
+    """Preview or delete a node + its descendants (?confirm=true to execute)."""
+    board_id = args.get("board_id") or DEFAULT_BOARD_ID
+    confirm = "true" if args.get("confirm") else "false"
+    return await _api(
+        "DELETE",
+        f"/integration/boards/{board_id}/nodes/{args['node_id']}:subtree?confirm={confirm}",
+    )
+
+
+async def handle_dim0_merge_nodes(args: dict) -> dict:
+    """Merge several nodes into a target node (two-phase via body.confirm)."""
+    board_id = args.get("board_id") or DEFAULT_BOARD_ID
+    return await _api(
+        "POST",
+        f"/integration/boards/{board_id}/nodes:merge",
+        json={
+            "node_ids": args["node_ids"],
+            "target_id": args["target_id"],
+            "confirm": bool(args.get("confirm", False)),
+        },
+    )
+
+
+async def handle_dim0_split_node(args: dict) -> dict:
+    """Split a node into several sibling notes (two-phase via body.confirm)."""
+    board_id = args.get("board_id") or DEFAULT_BOARD_ID
+    return await _api(
+        "POST",
+        f"/integration/boards/{board_id}/nodes/{args['node_id']}:split",
+        json={
+            "parts": args["parts"],
+            "confirm": bool(args.get("confirm", False)),
+            "delete_original": bool(args.get("delete_original", True)),
+        },
+    )
+
+
 HANDLERS: dict[str, Any] = {
     "dim0_health": handle_dim0_health,
     "dim0_get_board": handle_dim0_get_board,
@@ -528,6 +690,11 @@ HANDLERS: dict[str, Any] = {
     "dim0_layout_nodes": handle_dim0_layout_nodes,
     "dim0_emit_research_event": handle_dim0_emit_research_event,
     "dim0_upsert_research_graph": handle_dim0_upsert_research_graph,
+    "dim0_set_node_kind": handle_dim0_set_node_kind,
+    "dim0_reparent_node": handle_dim0_reparent_node,
+    "dim0_delete_subtree": handle_dim0_delete_subtree,
+    "dim0_merge_nodes": handle_dim0_merge_nodes,
+    "dim0_split_node": handle_dim0_split_node,
 }
 
 
