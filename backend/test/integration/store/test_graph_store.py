@@ -10,6 +10,7 @@ from topix.datatypes.property import PositionProperty
 from topix.datatypes.resource import RichText
 from topix.datatypes.user import User
 from topix.store.graph import GraphStore
+from topix.store.postgres.graph import get_graph_id_by_uid
 from topix.store.postgres.graph_user import add_user_to_graph_by_uid
 from topix.store.qdrant.store import ContentStore
 from topix.store.user import UserStore
@@ -146,6 +147,32 @@ async def test_graph_role_lookup(config, init_collection):
         await user_store.delete_user(member_uid, hard_delete=True)
         await graph_store.close()
         await user_store.close()
+
+
+@pytest.mark.asyncio
+async def test_add_graph_atomic_owner_assignment(config, init_collection):
+    """add_graph must commit graph + owner row atomically.
+
+    Regression: create_graph and add_user_to_graph_by_uid used to run as
+    two autocommits, leaving a window where a private board existed with
+    no owner row → GET /boards/{id} returned 404 intermittently (the
+    role check found no owner, visibility was private). If owner
+    assignment fails, the graph insert must roll back so no board ever
+    exists without an owner.
+    """
+    graph_store = GraphStore()
+    await graph_store.open()
+    bogus_user_uid = gen_uid()  # not in users table → ValueError on assign
+    try:
+        graph = Graph(label="Atomicity Graph")
+        with pytest.raises(ValueError):
+            await graph_store.add_graph(graph, user_uid=bogus_user_uid)
+
+        async with graph_store._pg_pool.acquire() as conn:
+            graph_id = await get_graph_id_by_uid(conn, graph.uid)
+        assert graph_id is None, "graph row must roll back when owner assign fails"
+    finally:
+        await graph_store.close()
 
 
 @pytest.mark.asyncio

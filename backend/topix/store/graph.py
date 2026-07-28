@@ -681,10 +681,17 @@ class GraphStore:
         return descendants
 
     async def add_graph(self, graph: Graph, user_uid: str) -> Graph:
-        """Create a new graph."""
+        """Create a new graph and assign its owner in one atomic transaction.
+
+        Graph + owner `graph_user` row commit together so no window exists
+        where a private board is readable without an owner — which
+        previously let a concurrent GET /boards/{id} pass the graph-exists
+        check then fail the role check (404) until the owner row landed.
+        """
         async with self._pg_pool.acquire() as conn:
-            await create_graph(conn, graph)
-            await add_user_to_graph_by_uid(conn, graph.uid, user_uid, "owner")
+            async with conn.transaction():
+                await create_graph(conn, graph)
+                await add_user_to_graph_by_uid(conn, graph.uid, user_uid, "owner")
 
     async def update_graph(self, graph_uid: str, data: dict):
         """Update an existing graph."""
