@@ -49,6 +49,30 @@ export const MAX_RECONNECT_ATTEMPTS = 6
 let currentState: CollabConnState = "idle"
 const listeners = new Set<() => void>()
 
+/**
+ * Imperative reconnect handle registered by `useWsCollab` while a board
+ * is mounted. The status pill's "Reconnect" button calls
+ * `requestCollabReconnect` so a user can escape the terminal `failed` /
+ * `room-full` state without a full page refresh. `null` when no board
+ * is active (sign-out, board list) so the call is a safe no-op.
+ */
+let reconnectTrigger: (() => void) | null = null
+
+
+/** Registered by the WS hook on mount; cleared on unmount. */
+export const setCollabReconnectTrigger = (fn: (() => void) | null): void => {
+  reconnectTrigger = fn
+}
+
+
+/**
+ * Request a reconnect from outside the hook (status pill button,
+ * `online` event in non-hook code). No-op when no board is mounted.
+ */
+export const requestCollabReconnect = (): void => {
+  reconnectTrigger?.()
+}
+
 
 /** Non-React reader — used in non-component code paths. */
 export const getCollabConnState = (): CollabConnState => currentState

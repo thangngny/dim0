@@ -26,6 +26,7 @@ import {
   getCollabConnState,
   resetCollabConnState,
   setCollabConnState,
+  setCollabReconnectTrigger,
 } from "./collab-reconnect"
 import { createPresenceThrottle } from "./presence-throttle"
 import {
@@ -38,6 +39,7 @@ import {
 } from "../theme/color-adapter"
 import { getBoardThemeMode } from "../theme/theme-mode-ref"
 import { normalizeBatchAutoFit } from "./normalize-autofit"
+import { restoreCollapsedGroups } from "./collapsed-groups"
 
 
 /**
@@ -147,6 +149,10 @@ export const useWsCollab = (
           lastSeq = seq
           attempt = 0
           setCollabConnState("live")
+          // The welcome snapshot (mode "merge") re-applies server node
+          // state, which doesn't carry `hidden` — re-apply persisted
+          // collapsed clusters so a reload keeps collapsed groups hidden.
+          restoreCollapsedGroups(store, boardId)
         },
         onClose: (code, seqAtClose) => {
           lastSeq = seqAtClose
@@ -179,26 +185,67 @@ export const useWsCollab = (
       }
     }
 
-    // Visibility-change: when the tab is foregrounded after being
-    // backgrounded long enough for the WS to die, retry immediately
-    // instead of waiting out the current backoff. Mobile Safari does
-    // this aggressively (~5 min); the user's perception is "I opened
-    // the tab back up and it just worked."
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== "visible") return
-      if (getCollabConnState() !== "reconnecting") return
+    // Cancel any pending backoff and start a fresh connect attempt
+    // immediately. Used by the `online` event, the visibility-change
+    // fast-retry, and the imperative `requestCollabReconnect` handle
+    // (status pill button) so all three share one reset path.
+    const retryNow = () => {
+      if (cancelled) return
       cancelReconnect()
       attempt = 0
       void setup()
     }
+    // Expose the retry handle so the collab-status pill can offer a
+    // "Reconnect" button that escapes the terminal `failed` / `room-full`
+    // state without a full page refresh.
+    setCollabReconnectTrigger(retryNow)
+
+    // Visibility-change: when the tab is foregrounded after being
+    // backgrounded long enough for the WS to die, retry immediately
+    // instead of waiting out the current backoff. Mobile Safari does
+    // this aggressively (~5 min); the user's perception is "I opened
+    // the tab back up and it just worked." Also fires from the terminal
+    // `failed` state so a user who backgrounded the tab during an
+    // outage recovers on refocus instead of seeing "Disconnected".
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return
+      const st = getCollabConnState()
+      if (st !== "reconnecting" && st !== "failed") return
+      retryNow()
+    }
     document.addEventListener("visibilitychange", onVisibilityChange)
+
+    // `online` event: the browser regained network after an offline
+    // spell. The WS may have already burned through MAX_RECONNECT_ATTEMPTS
+    // while the network was down (landing in terminal `failed`); without
+    // this, the user would have to refresh even though connectivity is
+    // back. Retry from both `reconnecting` and `failed`.
+    const onOnline = () => {
+      const st = getCollabConnState()
+      if (st === "reconnecting" || st === "failed") retryNow()
+    }
+    window.addEventListener("online", onOnline)
+
+    // Slow background retry from the terminal `failed` state. The
+    // `online` + visibility handlers cover the common cases, but some
+    // environments (background tab throttling, flaky NICs that don't
+    // fire `online`) can leave the user stranded in `failed` with no
+    // event to wake the loop. A 20s poll is cheap and self-stops once
+    // a retry succeeds (state leaves `failed`).
+    const failedRetryTimer = setInterval(() => {
+      if (cancelled) return
+      if (getCollabConnState() === "failed") retryNow()
+    }, 20_000)
 
     void setup()
 
     return () => {
       cancelled = true
       cancelReconnect()
+      setCollabReconnectTrigger(null)
       document.removeEventListener("visibilitychange", onVisibilityChange)
+      window.removeEventListener("online", onOnline)
+      clearInterval(failedRetryTimer)
       teardown?.()
       teardown = null
       resetCollabConnState()
@@ -518,6 +565,53 @@ type InboundMessage =
   | { kind: "presence-leave"; clientId: ClientId }
   | { kind: "hello"; clientId: ClientId }
   | { kind: "kick"; reason?: string }
+  | {
+      kind: "research-progress"
+      board_id?: string
+      session_id?: string
+      ts?: number
+      event?: {
+        id?: string
+        event_type: string
+        label?: string
+        agent_id?: string
+        role?: string
+        detail?: string
+        query?: string
+        ts?: number
+      }
+      snapshot?: {
+        board_id: string
+        session_id: string
+        mode?: string
+        last_event?: string
+        last_label?: string
+        completed?: boolean
+        failed?: boolean
+        active?: boolean
+        nodes_seen?: number
+        agents?: Array<{
+          agent_id: string
+          role: string
+          label: string
+          status: string
+          detail: string
+          query: string
+          updated_at?: number
+        }>
+        events?: Array<{
+          id?: string
+          event_type: string
+          label?: string
+          agent_id?: string
+          role?: string
+          detail?: string
+          query?: string
+          ts?: number
+        }>
+        updated_at?: number
+      }
+    }
 
 
 type WebSocketSyncOptions = {
@@ -782,6 +876,40 @@ const createWebSocketSyncAdapter = ({
     }
     if (msg.kind === "hello" && msg.clientId !== clientId && lastLocalPresence) {
       send({ kind: "presence", clientId, state: lastLocalPresence })
+      return
+    }
+    if (msg.kind === "research-progress") {
+      // UI-only signal for deep-research sub-agent panel (no canvas ops).
+      try {
+        // Dynamic import avoids circular deps with board feature stores.
+        void import("../../lib/research-live-store").then((mod) => {
+          if (msg.snapshot) {
+            mod.setResearchLiveSnapshot({
+              board_id: msg.snapshot.board_id || msg.board_id || "",
+              session_id: msg.snapshot.session_id || msg.session_id || "",
+              mode: msg.snapshot.mode,
+              last_event: msg.snapshot.last_event,
+              last_label: msg.snapshot.last_label,
+              completed: msg.snapshot.completed,
+              failed: msg.snapshot.failed,
+              active: msg.snapshot.active,
+              nodes_seen: msg.snapshot.nodes_seen,
+              agents: (msg.snapshot.agents || []) as mod.ResearchAgentCard[],
+              events: msg.snapshot.events || [],
+              updated_at: msg.snapshot.updated_at,
+            })
+          }
+          if (msg.event) {
+            mod.applyResearchLiveEvent(
+              msg.board_id || msg.snapshot?.board_id || "",
+              msg.session_id || msg.snapshot?.session_id || "",
+              msg.event,
+            )
+          }
+        })
+      } catch {
+        // ignore
+      }
       return
     }
     if (msg.kind === "kick") {

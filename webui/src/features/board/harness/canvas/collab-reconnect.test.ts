@@ -3,8 +3,10 @@ import {
   MAX_RECONNECT_ATTEMPTS,
   computeBackoffMs,
   getCollabConnState,
+  requestCollabReconnect,
   resetCollabConnState,
   setCollabConnState,
+  setCollabReconnectTrigger,
 } from "./collab-reconnect"
 
 
@@ -90,5 +92,42 @@ describe("collab connection state singleton", () => {
     expect(getCollabConnState()).toBe("failed")
     resetCollabConnState()
     expect(getCollabConnState()).toBe("idle")
+  })
+})
+
+
+describe("imperative reconnect trigger", () => {
+  beforeEach(() => {
+    resetCollabConnState()
+    setCollabReconnectTrigger(null)
+  })
+
+  afterEach(() => {
+    resetCollabConnState()
+    setCollabReconnectTrigger(null)
+  })
+
+  it("requestCollabReconnect is a no-op when no trigger is registered", () => {
+    // Should not throw when no board is mounted.
+    expect(() => requestCollabReconnect()).not.toThrow()
+  })
+
+  it("invokes the registered trigger", () => {
+    let calls = 0
+    setCollabReconnectTrigger(() => {
+      calls += 1
+    })
+    requestCollabReconnect()
+    expect(calls).toBe(1)
+  })
+
+  it("clearing the trigger makes requests a no-op again", () => {
+    let calls = 0
+    setCollabReconnectTrigger(() => {
+      calls += 1
+    })
+    setCollabReconnectTrigger(null)
+    requestCollabReconnect()
+    expect(calls).toBe(0)
   })
 })
