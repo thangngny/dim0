@@ -1,9 +1,13 @@
 """Router for utils."""
+import ipaddress
 import logging
-
+import socket
 from typing import Annotated, Literal
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, Field
 
 from topix.api.utils.decorators import with_standard_response
 from topix.api.utils.rate_limit.entitlements import resolve_entitlement_context
@@ -30,6 +34,94 @@ async def ping() -> Response:
     fast enough to poll aggressively without skewing real metrics.
     """
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Link reachability check (SSRF-guarded)
+# ---------------------------------------------------------------------------
+
+
+class CheckLinkRequest(BaseModel):
+    url: str = Field(..., description="Absolute http(s) URL to probe.")
+
+
+class CheckLinkResponse(BaseModel):
+    ok: bool
+    status_code: int | None = None
+    reason: str
+
+
+_BLOCKED_HOSTS = {"localhost", "metadata.google.internal"}
+
+
+def _is_safe_url(url: str) -> tuple[bool, str]:
+    """Validate the URL scheme + resolve the host to block private/loopback IPs (SSRF guard)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False, "only http/https allowed"
+    host = parsed.hostname
+    if not host or host in _BLOCKED_HOSTS:
+        return False, "blocked host"
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False, "dns resolution failed"
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return False, "private/loopback address"
+    return True, "ok"
+
+
+@router.post("/check-link", include_in_schema=False)
+@router.post("/check-link/")
+@with_standard_response
+async def check_link(
+    body: CheckLinkRequest,
+    user_id: Annotated[str, Depends(get_current_user_uid)],
+) -> dict:
+    """Probe a URL's reachability (HEAD, fallback GET) with an SSRF guard + short timeout.
+
+    Used by the board's Sources overlay so the user can tell live links
+    from dead ones without copy-pasting into another browser. Blocks
+    private/loopback targets so a malicious node can't turn the server
+    into an internal-network probe.
+    """
+    safe, reason = _is_safe_url(body.url)
+    if not safe:
+        return {"ok": False, "status_code": None, "reason": reason}
+    try:
+        async with httpx.AsyncClient(
+            timeout=8.0,
+            follow_redirects=True,
+            max_redirects=5,
+            headers={"User-Agent": "dim0-link-check/1.0"},
+        ) as client:
+            try:
+                resp = await client.head(body.url)
+                # Some servers reject HEAD with 405/400 — fall back to GET.
+                if resp.status_code in (405, 400, 501):
+                    resp = await client.get(body.url)
+            except httpx.RequestError:
+                resp = await client.get(body.url)
+        ok = resp.status_code < 400
+        return {
+            "ok": ok,
+            "status_code": resp.status_code,
+            "reason": "ok" if ok else f"http {resp.status_code}",
+        }
+    except httpx.RequestError as e:
+        return {"ok": False, "status_code": None, "reason": f"unreachable: {type(e).__name__}"}
+    except Exception as e:  # noqa: BLE001 — defensive: never 500 on a link check
+        logger.warning("check-link failed for %s: %s", body.url, e)
+        return {"ok": False, "status_code": None, "reason": "check failed"}
 
 
 @router.get("/icons/search/", include_in_schema=False)

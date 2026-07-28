@@ -1,8 +1,9 @@
-import { useCallback, useSyncExternalStore } from "react"
-import { ArrowUpRightIcon, CheckIcon } from "@phosphor-icons/react"
+import { useCallback, useState, useSyncExternalStore } from "react"
+import { ArrowUpRightIcon, CheckIcon, WarningIcon, SpinnerIcon } from "@phosphor-icons/react"
 import { worldToScreen, type CameraState, type Node, type NodeId } from "@canvas-harness/core"
 import { useCamera, useNodes } from "@canvas-harness/react"
-import { extractLinks } from "./extract-links"
+import { apiFetch } from "@/api"
+import { extractLinks, type LinkItem } from "./extract-links"
 
 
 /**
@@ -112,20 +113,68 @@ type LinkClusterProps = {
 }
 
 
+/** Per-link reachability state from the `/utils/check-link` endpoint. */
+type CheckState = "checking" | "ok" | "dead" | "error"
+
+
+/** Probe one URL via the SSRF-guarded backend endpoint. */
+const checkLinkUrl = async (url: string): Promise<CheckState> => {
+  try {
+    const res = await apiFetch<{ data?: { ok?: boolean } } | { ok?: boolean }>({
+      path: "/utils/check-link",
+      method: "POST",
+      body: { url },
+    })
+    const ok = (res as { data?: { ok?: boolean } }).data?.ok ?? (res as { ok?: boolean }).ok
+    return ok ? "ok" : "dead"
+  } catch {
+    return "error"
+  }
+}
+
+
 /** One node's "Sources" checklist, absolutely positioned under the node. */
 function LinkCluster({ node, screenX, screenY, isReviewed, toggle }: LinkClusterProps) {
   const links = extractLinks(typeof node.content === "string" ? node.content : "")
+  const [checkStates, setCheckStates] = useState<Record<string, CheckState>>({})
+  const [checking, setChecking] = useState(false)
+
+  const handleCheck = useCallback(async () => {
+    if (checking) return
+    setChecking(true)
+    const entries = await Promise.all(
+      links.map(async (l: LinkItem) => {
+        setCheckStates((s) => ({ ...s, [l.url]: "checking" }))
+        const state = await checkLinkUrl(l.url)
+        return [l.url, state] as const
+      }),
+    )
+    setCheckStates((s) => ({ ...s, ...Object.fromEntries(entries) }))
+    setChecking(false)
+  }, [links, checking])
+
   if (links.length === 0) return null
   return (
     <div
       className="pointer-events-auto absolute flex max-w-[280px] flex-col gap-0.5 rounded-md border border-border/60 bg-background/95 px-1.5 py-1 text-[11px] shadow-sm backdrop-blur"
       style={{ left: screenX, top: screenY }}
     >
-      <div className="px-0.5 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
-        Sources
+      <div className="flex items-center justify-between px-0.5">
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Sources
+        </span>
+        <button
+          type="button"
+          onClick={() => void handleCheck()}
+          disabled={checking}
+          className="text-[9px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50"
+        >
+          {checking ? "checking…" : "check"}
+        </button>
       </div>
       {links.map((l) => {
         const done = isReviewed(node.id as NodeId, l.url)
+        const cs = checkStates[l.url]
         return (
           <div key={l.url} className="flex items-center gap-1">
             <button
@@ -147,10 +196,19 @@ function LinkCluster({ node, screenX, screenY, isReviewed, toggle }: LinkCluster
               rel="noopener noreferrer"
               className={`flex min-w-0 items-center gap-0.5 truncate hover:underline ${
                 done ? "text-muted-foreground line-through" : "text-foreground"
-              }`}
+              } ${cs === "dead" || cs === "error" ? "text-amber-600 dark:text-amber-400" : ""}`}
+              title={cs === "dead" ? "Link may be dead" : cs === "error" ? "Couldn't check" : undefined}
             >
               <span className="truncate">{l.label}</span>
-              <ArrowUpRightIcon className="size-2.5 shrink-0 opacity-60" />
+              {cs === "ok" ? (
+                <CheckIcon className="size-2.5 shrink-0 text-emerald-500" weight="bold" />
+              ) : cs === "dead" || cs === "error" ? (
+                <WarningIcon className="size-2.5 shrink-0" weight="fill" />
+              ) : cs === "checking" ? (
+                <SpinnerIcon className="size-2.5 shrink-0 animate-spin" />
+              ) : (
+                <ArrowUpRightIcon className="size-2.5 shrink-0 opacity-60" />
+              )}
             </a>
           </div>
         )
