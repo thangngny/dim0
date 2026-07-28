@@ -8,6 +8,7 @@ from topix.integrations.research_meta import (
 from topix.integrations.research_runner import (
     ResearchMode,
     build_research_prompt,
+    completed_early_done_action,
     default_effort_for_mode,
 )
 from topix.integrations.research_scope import (
@@ -24,6 +25,70 @@ def test_effort_defaults():
     assert default_effort_for_mode(ResearchMode.REFRAME) == "ultracode"
     assert default_effort_for_mode(ResearchMode.EXPAND) == "xhigh"
     assert default_effort_for_mode(ResearchMode.CRITIQUE) == "high"
+
+
+def test_completed_action_not_completed_is_noop():
+    """No completed event → runner keeps polling, grace untouched."""
+    action, grace = completed_early_done_action(
+        completed=False, last_node_count=0, baseline=0,
+        grace_started=None, now=100.0,
+    )
+    assert action is None
+    assert grace is None
+
+
+def test_completed_action_with_nodes_finishes_immediately():
+    """Completed after graph written → finish now (the legit path)."""
+    action, grace = completed_early_done_action(
+        completed=True, last_node_count=5, baseline=0,
+        grace_started=None, now=100.0,
+    )
+    assert action == "done"
+    assert grace is None
+
+
+def test_completed_action_zero_nodes_starts_grace_then_expires():
+    """Premature completed (0 nodes) must NOT finish — grace window first.
+
+    Regression: previously the runner broke the moment `completed` fired
+    regardless of node count, killing Claude before its write landed and
+    leaving a 0-node board. Now it waits, and only finishes once the
+    grace window elapses with nothing written.
+    """
+    # First tick: completed fired, 0 nodes → start grace, do NOT finish.
+    action, grace = completed_early_done_action(
+        completed=True, last_node_count=0, baseline=0,
+        grace_started=None, now=100.0,
+    )
+    assert action == "wait_start"
+    assert grace == 100.0
+
+    # Mid-grace: keep waiting, grace timestamp stable.
+    action, grace = completed_early_done_action(
+        completed=True, last_node_count=0, baseline=0,
+        grace_started=100.0, now=120.0,
+    )
+    assert action == "wait_continue"
+    assert grace == 100.0
+
+    # Past grace, still 0 nodes → finish with warning.
+    action, grace = completed_early_done_action(
+        completed=True, last_node_count=0, baseline=0,
+        grace_started=100.0, now=131.0,
+    )
+    assert action == "grace_expire"
+    assert grace == 100.0
+
+
+def test_completed_action_writes_during_grace_finishes_immediately():
+    """If the agent writes during the grace window, finish as soon as
+    nodes appear — the guard's whole purpose is to give the write time
+    to land, then treat it as a normal completion."""
+    action, _ = completed_early_done_action(
+        completed=True, last_node_count=3, baseline=0,
+        grace_started=100.0, now=125.0,
+    )
+    assert action == "done"
 
 
 def test_build_prompt_expand_includes_focus_and_evidence():

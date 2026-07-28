@@ -84,6 +84,45 @@ def default_effort_for_mode(mode: ResearchMode) -> str:
     return "high"
 
 
+# Grace window the runner waits after a `completed` event arrived before
+# any node was written — gives the agent time to land its graph write
+# before the runner terminates the process. Tuned for ultracode writes.
+COMPLETED_ZERO_NODE_GRACE_S = 30.0
+
+
+def completed_early_done_action(
+    *,
+    completed: bool,
+    last_node_count: int,
+    baseline: int,
+    grace_started: float | None,
+    now: float,
+    grace_seconds: float = COMPLETED_ZERO_NODE_GRACE_S,
+) -> tuple[Literal["done", "wait_start", "wait_continue", "grace_expire"] | None, float | None]:
+    """Decide the runner's response to an MCP `completed` event.
+
+    Returns ``(action, grace_started)`` where ``action`` is:
+      - ``"done"``          — graph was written (nodes > baseline); finish now.
+      - ``"wait_start"``     — completed fired with 0 nodes; begin grace window.
+      - ``"wait_continue"``  — still in grace window; keep polling for writes.
+      - ``"grace_expire"``   — grace elapsed with 0 nodes; finish with warning.
+      - ``None``             — not completed; no action this tick.
+
+    ``grace_started`` is the (possibly newly set) grace-window timestamp.
+    Extracted as a pure function so the 0-node guard is unit-testable
+    without driving the full SSE/subprocess loop.
+    """
+    if not completed:
+        return None, grace_started
+    if last_node_count > baseline:
+        return "done", grace_started
+    if grace_started is None:
+        return "wait_start", now
+    if now - grace_started >= grace_seconds:
+        return "grace_expire", grace_started
+    return "wait_continue", grace_started
+
+
 def graph_writer_rules(*, board_id: str, max_new_nodes: int, session_id: str, phase: str) -> str:
     """Shared GraphWriter contract for all modes."""
     return (
@@ -709,7 +748,14 @@ async def stream_research_claude(
                     # that premature signal kills Claude before nodes land →
                     # 0-node board. Guard: require nodes > baseline, else grace.
                     if prog and prog.completed:
-                        if last_node_count > baseline:
+                        action, completion_grace_started = completed_early_done_action(
+                            completed=True,
+                            last_node_count=last_node_count,
+                            baseline=baseline,
+                            grace_started=completion_grace_started,
+                            now=time.time(),
+                        )
+                        if action == "done":
                             yield (
                                 "data: "
                                 + json.dumps(
@@ -722,10 +768,7 @@ async def stream_research_claude(
                             )
                             early_done = True
                             break
-                        # completed fired but nothing written yet — give the agent
-                        # a grace window to finish writing before terminating.
-                        if completion_grace_started is None:
-                            completion_grace_started = time.time()
+                        elif action == "wait_start":
                             yield (
                                 "data: "
                                 + json.dumps(
@@ -739,14 +782,15 @@ async def stream_research_claude(
                                 )
                                 + "\n\n"
                             )
-                        elif time.time() - completion_grace_started >= 30.0:
+                        elif action == "grace_expire":
                             yield (
                                 "data: "
                                 + json.dumps(
                                     {
                                         "status": "progress",
                                         "text": (
-                                            "Completed event but 0 nodes after 30s grace — "
+                                            "Completed event but 0 nodes after "
+                                            f"{COMPLETED_ZERO_NODE_GRACE_S:.0f}s grace — "
                                             "finishing (research wrote nothing)."
                                         ),
                                     }
