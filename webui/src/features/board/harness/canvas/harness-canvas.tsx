@@ -60,6 +60,7 @@ import { useBoardKeyboard } from "./use-board-keyboard"
 import { useCenterFromUrl } from "./use-center-from-url"
 import { useCreateHandlers } from "./use-create-handlers"
 import { useHarnessDropFiles } from "./use-drop-files"
+import { useHarnessPasteImage } from "./use-paste-image"
 import { useHydrateIconNodes } from "./use-hydrate-icon-nodes"
 import { usePresentationMode } from "./use-presentation-mode"
 import { useBlockFolderCopy } from "./use-block-folder-copy"
@@ -218,6 +219,7 @@ export function HarnessCanvas() {
     },
   }
   const { onDragOver, onDrop } = useHarnessDropFiles(wrapRef, store, boardId, rootId, canEdit)
+  useHarnessPasteImage(wrapRef, store, boardId, rootId)
   const navigate = useNavigate()
 
   // Double-click dispatch.
