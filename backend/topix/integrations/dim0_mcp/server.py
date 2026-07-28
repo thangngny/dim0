@@ -272,9 +272,13 @@ TOOLS = [
     {
         "name": "dim0_emit_research_event",
         "description": (
-            "Emit a high-level research status event (no canvas change). "
-            "Use this to signal progress: planning, workstream_started, "
-            "source_found, finding_added, cross_checking, synthesizing, completed, failed."
+            "Emit a research status event shown live on Launcher + canvas agent panel. "
+            "Call often so users see what each sub-agent is searching. "
+            "event_type: planning, workstream_started, source_found, finding_added, "
+            "cross_checking, synthesizing, agent_started, agent_progress, agent_done, "
+            "agent_failed, completed, failed, cancelled. "
+            "Pass agent_id (stable slug), role (lead|workstream|collector|critique|writer), "
+            "query (what is being searched), detail (one-line status), label (card title)."
         ),
         "inputSchema": {
             "type": "object",
@@ -286,10 +290,31 @@ TOOLS = [
                     "enum": [
                         "planning", "workstream_started", "source_found",
                         "finding_added", "cross_checking", "synthesizing",
+                        "agent_started", "agent_progress", "agent_done", "agent_failed",
                         "completed", "failed", "cancelled",
                     ],
                 },
                 "label": {"type": "string", "maxLength": 200},
+                "agent_id": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "Stable card id, e.g. lead, ws-tv, critique, writer",
+                },
+                "role": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "description": "lead | workstream | collector | critique | writer | worker",
+                },
+                "detail": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "One-line status for the UI card",
+                },
+                "query": {
+                    "type": "string",
+                    "maxLength": 300,
+                    "description": "Search query or topic fragment being pursued",
+                },
             },
             "required": ["session_id", "event_type"],
         },
@@ -542,13 +567,20 @@ async def handle_dim0_layout_nodes(args: dict) -> dict:
 
 
 async def handle_dim0_emit_research_event(args: dict) -> dict:
+    """Forward structured sub-agent progress to integration API (live UI)."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID or "unknown"
     payload = {
         "session_id": args.get("session_id", str(uuid.uuid4())),
         "event_type": args.get("event_type", "planning"),
         "label": args.get("label"),
         "board_id": board_id,
+        "agent_id": args.get("agent_id"),
+        "role": args.get("role"),
+        "detail": args.get("detail"),
+        "query": args.get("query"),
     }
+    # Drop null optionals so validation stays clean.
+    payload = {k: v for k, v in payload.items() if v is not None}
     return await _api("POST", f"/integration/boards/{board_id}/research-events", json=payload)
 
 

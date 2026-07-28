@@ -35,6 +35,7 @@ class ResearchMode(str, Enum):
     REFRAME = "reframe"
     EXPAND = "expand"
     CRITIQUE = "critique"
+    IMPROVE = "improve"
 
 
 class ResearchBudget(BaseModel):
@@ -78,6 +79,8 @@ def default_effort_for_mode(mode: ResearchMode) -> str:
         return "ultracode"
     if mode == ResearchMode.EXPAND:
         return "xhigh"
+    if mode == ResearchMode.IMPROVE:
+        return "xhigh"
     return "high"
 
 
@@ -96,7 +99,23 @@ def graph_writer_rules(*, board_id: str, max_new_nodes: int, session_id: str, ph
         "7) Edge relations only: investigates, derived_from, supports, contradicts, depends_on, "
         "blocks, produces, leads_to, supersedes, summarizes.\n"
         f"8) Respect MAX_NEW_NODES={max_new_nodes}. Call dim0_layout_nodes after batch create.\n"
-        "9) Emit dim0_emit_research_event for major phases (planning, synthesizing, completed).\n"
+        "9) LIVE UI PROGRESS (mandatory — users watch sub-agents on launcher + canvas):\n"
+        "   Call dim0_emit_research_event often with clear labels. Preferred event_type:\n"
+        "   planning | workstream_started | source_found | finding_added | cross_checking |\n"
+        "   synthesizing | agent_started | agent_progress | agent_done | completed | failed.\n"
+        "   Always pass session_id and board_id. Optionally pass agent_id, role, detail, query:\n"
+        "   - role: lead | workstream | collector | critique | writer\n"
+        "   - agent_id: stable slug (lead, ws-tv, ws-customer, critique, writer)\n"
+        "   - query: what is being searched (short)\n"
+        "   - detail: one-line status for the UI card\n"
+        "   FIRST: before any web_search or node write, emit ONE `planning` event with\n"
+        "   role=lead, label=\"Kế hoạch\", detail listing the intended workstreams + axes +\n"
+        "   1-line search strategy each — so the user sees the plan BEFORE results land.\n"
+        "   Emit agent_started when spinning a workstream/sub-agent; agent_progress while\n"
+        "   searching; source_found / finding_added when evidence lands; agent_done when done.\n"
+        "   On ANY workstream/step failure: emit `failed` with the reason in detail\n"
+        "   (e.g. \"ws-tone: Tavily quota hit, falling back to fewer sources\") so the user\n"
+        "   understands what went wrong instead of seeing a silent stop.\n"
         "10) Do NOT paste chain-of-thought onto the board — only final graph content.\n"
         "11) Expand scope: if MODE=expand, never update/delete nodes outside FOCUS_NODE_IDS "
         "(server will reject). New children are allowed under focus.\n"
@@ -105,10 +124,62 @@ def graph_writer_rules(*, board_id: str, max_new_nodes: int, session_id: str, ph
         f"Never omit board_id. Never write to another board.\n"
         "13) When finished writing the graph, emit research_event event_type=completed "
         "with a short label (required for UI to finish promptly).\n"
-        "14) PRESENTATION: titles ≤ 60 chars, one idea per node, short body (3–6 lines). "
-        "Prefer clear hierarchy edges: question→workstream→finding→source, "
-        "summary summarizes workstreams. Call dim0_layout_nodes after each batch "
-        "(server applies hierarchical research layout automatically).\n"
+        "14) PRESENTATION / GỌN GÀNG (anti-dump):\n"
+        "   - titles ≤ 50 chars, one idea per node, body 2–5 lines max.\n"
+        "   - hierarchy edges only: question→workstream→finding→source (and summary→ws).\n"
+        "   - Do NOT create many free-floating notes; every node under a workstream cluster.\n"
+        "   - Prefer ≤ 3 workstreams for creative-ref briefs (Storyline / Tone&Mood / Technique).\n"
+        "   - Call dim0_layout_nodes after each batch (server hierarchical research layout).\n"
+        "   - If content is long, put bullets in one finding — never spam 10 near-duplicate nodes.\n"
+        "15) CITATION INTEGRITY (anti-hallucination — mandatory):\n"
+        "   - NEVER invent a URL. A Source/Evidence node MUST carry a real URL from\n"
+        "     WEB_EVIDENCE or user REFERENCES only. If you have no real URL, mark the\n"
+        "     node `unknown`/low confidence and say so — do NOT fabricate a link.\n"
+        "   - Before creating a Source node, call dim0_list_nodes; if a Source with the\n"
+        "     SAME URL already exists, do NOT recreate it — reference the existing one\n"
+        "     (the server also dedupes by URL, but avoid the wasted call).\n"
+        "   - Prefer primary/official sources (brand site, official report, original paper,\n"
+        "     court filing, stat bureau) over aggregators/blog spam. Rank: official > news\n"
+        "     > trade press > forum/blog. State the source type in the node.\n"
+        "   - Check the publication date. If the topic moves fast (AI, markets, policy) and\n"
+        "     the source is >24 months old, prefer a newer one or add an `unknown`/stale\n"
+        "     note. Stamp `year` in metadata when known.\n"
+        "   - If two sources repeat the same claim, cite ONE (the more authoritative) and\n"
+        "     note the duplicate in a single Finding — do not create parallel copies.\n"
+        "   - Every Finding that makes a factual claim MUST link (edge) to ≥1 Source node.\n"
+        "16) VIETNAMESE QUALITY (when language=vi — mandatory, this is a common complaint):\n"
+        "   - Write natural, idiomatic Vietnamese — NOT machine-translated phrasing.\n"
+        "     Avoid calques like 'làm cho nó', 'để mà', English word-order, or stiff\n"
+        "     'S sẽ được V bởi O' passives. Prefer active, conversational-but-clear tone.\n"
+        "   - Correct spelling + diacritics. Brand/product names keep original spelling.\n"
+        "   - No boilerplate filler ('Trong thế giới ngày nay', 'Không thể phủ nhận').\n"
+        "   - Keep terms consistent across nodes (one term per concept).\n"
+        "   - When IMPROVE-ing a node: PRESERVE its good parts; refine, don't replace.\n"
+        "17) MEMORY ACROSS ROUNDS (the board IS your long-term memory):\n"
+        "   - ALWAYS dim0_get_board / dim0_list_nodes first. Read existing decisions,\n"
+        "     rejected alternatives, and prior findings BEFORE proposing anything new.\n"
+        "   - Never re-propose an option the board already rejected (check Contradiction /\n"
+        "     Unknown / Decision nodes). If you must revisit it, say WHY the earlier\n"
+        "     rejection no longer holds.\n"
+        "   - Each pass builds on the previous one — do not act as if the board is empty.\n"
+        "18) VIDEO REFERENCES (when INSTRUCTION asks for video/refs):\n"
+        "   - Prefer DIRECT platform links as the Source URL: youtube.com/watch?v=…,\n"
+        "     vimeo.com/…, pinterest.com/pin/…, behance.net/…, dribbble.com/…\n"
+        "   - Do NOT hand back a generic search-result page; land on the actual asset.\n"
+        "   - One Source node per video with title + platform + why-it-fits in the body.\n"
+        "19) ANALYSIS DEPTH & COUNTERVIEW (don't just list findings):\n"
+        "   - Proactively create ONE Contradiction or Unknown node when sources genuinely\n"
+        "     disagree OR a key question stays unresolved — surface it, don't hide it.\n"
+        "   - For a strategic/creative brief, add a Finding that states the opposing view\n"
+        "     or the risk of the recommended direction (not only the case FOR it).\n"
+        "   - Distinguish 'popular/common' from 'insightful/niche' — flag when a finding\n"
+        "     is something most people already know vs a non-obvious angle worth keeping.\n"
+        "20) KNOW WHEN TO STOP (anti-over-research):\n"
+        "   - Stop collecting once each workstream has 1–3 real Sources + 1–2 Findings\n"
+        "     grounded in them. More searches after that = diminishing returns + duplicate\n"
+        "     evidence. Do NOT pad the board to hit MAX_NEW_NODES.\n"
+        "   - If the first round already covers an axis well, skip further rounds for it.\n"
+        "   - Prefer fewer, higher-quality sources over many shallow ones.\n"
     )
 
 
@@ -159,21 +230,36 @@ def build_research_prompt(
             task = (
                 "MODE=explore — quét lần đầu THEO PHẠM VI ĐÃ CHỐT.\n"
                 "Nếu INSTRUCTION chứa SCOPE / IN_SCOPE / OUT_OF_SCOPE / AXES: "
-                "tuân thủ tuyệt đối — không lan man ngoài scope; workstream bám research_axes.\n"
-                "Tạo research graph: 1 Question (từ problem_statement), 3–6 Workstream, "
-                "Source/Evidence (ưu tiên WEB_EVIDENCE), Finding, 1 Unknown/Contradiction, "
-                "1 Decision, 1 Summary.\n"
-                "Orchestrate sub-agents: plan → collect song song → critique → write.\n"
+                "tuân thủ tuyệt đối — không lan man; workstream = research_axes.\n"
+                "\n"
+                "CẤU TRÚC GRAPH BẮT BUỘC (gọn, không nhả bừa):\n"
+                "1 Question · đúng 3 Workstream (trừ khi AXES chỉ định khác):\n"
+                "  WS1 = Ref Storyline (cách kể, tứ truyện, cốt truyện, arc)\n"
+                "  WS2 = Ref Tone & Mood (màu, tạo hình, nhịp, vibe)\n"
+                "  WS3 = Ref Thủ pháp (đồ họa, 3D, motion, thủ pháp thể hiện)\n"
+                "Mỗi WS: 1–3 Source (URL thật từ WEB_EVIDENCE / REFERENCES) + 1–2 Finding.\n"
+                "Toàn board: tối đa 1 Contradiction hoặc Unknown · 1 Decision · 1 Summary.\n"
+                "Tổng node ≤ min(MAX_NEW_NODES, 22). Title ≤ 50 ký tự. Body 2–5 dòng.\n"
+                "Không dump list generic; mỗi finding phải bám đặc trưng ngành trong INSTRUCTION.\n"
+                "Nếu có REFERENCES / link user: ưu tiên fetch ý từ đó (không bịa URL).\n"
+                "\n"
+                "Orchestrate: plan → collect theo 3 WS song song → critique → write + layout.\n"
+                "TRƯỚC mỗi WS: emit workstream_started (agent_id=ws-storyline|ws-tone|ws-craft).\n"
+                "KHI search: agent_progress + query. KHI có nguồn: source_found. "
+                "SAU critique: cross_checking. TRƯỚC write: synthesizing. CUỐI: completed.\n"
                 f"idempotency_key='{session_id}-explore'.\n"
-                "Tiếng Việt, progress ngắn."
+                "Tiếng Việt; label UI ngắn dễ hiểu."
             )
         else:
             task = (
                 "MODE=explore — first pass RESPECTING LOCKED SCOPE in INSTRUCTION.\n"
-                "If SCOPE / IN_SCOPE / OUT_OF_SCOPE / AXES present: obey strictly; "
-                "workstreams follow research axes only.\n"
-                "Build graph: 1 Question, 3–6 Workstreams, Sources/Evidence from WEB_EVIDENCE, "
-                "Findings, Unknown/Contradiction, Decision, Summary.\n"
+                "If SCOPE / AXES present: obey strictly; workstreams = research axes.\n"
+                "NEAT GRAPH (no dump): 1 Question + exactly 3 Workstreams unless AXES say otherwise:\n"
+                "  WS1 Ref Storyline · WS2 Ref Tone&Mood · WS3 Ref Technique.\n"
+                "Each WS: 1–3 real Sources + 1–2 Findings. At most 1 Contradiction/Unknown, "
+                "1 Decision, 1 Summary. Cap nodes ≤ min(MAX_NEW_NODES, 22). "
+                "Ground findings in industry traits; prefer user REFERENCES URLs.\n"
+                "Emit live sub-agent events (agent_started/progress/source_found/completed).\n"
                 f"idempotency_key='{session_id}-explore'. English progress."
             )
     elif mode == ResearchMode.REFRAME:
@@ -210,6 +296,34 @@ def build_research_prompt(
                 f"MODE=expand — deepen focus cluster.\n{focus_rule}\n"
                 "Add child sources/findings with real citations from WEB_EVIDENCE. "
                 f"idempotency_key='{session_id}-expand'."
+            )
+    elif mode == ResearchMode.IMPROVE:
+        focus_rule = (
+            f"Improve ONLY the focus node(s): {focus}. Never touch other nodes."
+            if focus
+            else "Pick the single node INSTRUCTION targets; touch only that one."
+        )
+        if lang_vi:
+            task = (
+                "MODE=improve — CẢI THIỆN một node hiện có, KHÔNG xóa-làm-mới.\n"
+                f"{focus_rule}\n"
+                "1) get_board / list_nodes để đọc node fOCUS + neighbours. "
+                "2) Dùng dim0_update_node để viết lại content node đó: giữ kind, "
+                "giữ edges, giữ cấu trúc bullet, chỉ nâng cấp theo INSTRUCTION "
+                "(sửa văn phong, rõ hơn, thêm chi tiết, bỏ thừa). "
+                "3) KHÔNG dim0_delete_node trừ khi INSTRUCTION yêu cầu rõ. "
+                "4) Giữ nguyên citation/URL thật đã có; chỉ thêm khi có nguồn mới thật.\n"
+                f"idempotency_key='{session_id}-improve'. Tiếng Việt tự nhiên."
+            )
+        else:
+            task = (
+                "MODE=improve — refine an EXISTING node, do NOT delete-and-rebuild.\n"
+                f"{focus_rule}\n"
+                "Read the focus node + neighbors, then dim0_update_node to rewrite its "
+                "content: keep kind, edges, structure; only improve per INSTRUCTION. "
+                "Do not dim0_delete_node unless INSTRUCTION explicitly asks. "
+                "Keep real citations; only add new ones with real URLs.\n"
+                f"idempotency_key='{session_id}-improve'."
             )
     else:  # critique
         if lang_vi:
@@ -256,6 +370,11 @@ async def stream_research_claude(
         yield f"data: {json.dumps({'status': 'error', 'detail': 'claude CLI not found on PATH'})}\n\n"
         return
 
+    from topix.integrations.research_progress import track_session as _track_early
+
+    # Track session before evidence so early agent cards survive.
+    _track_early(session_id, board_id, body.mode.value)
+
     yield (
         "data: "
         + json.dumps(
@@ -269,8 +388,8 @@ async def stream_research_claude(
         + "\n\n"
     )
 
-    # Expand scope gate registration
-    if body.mode == ResearchMode.EXPAND:
+    # Scope gate registration for focus-scoped modes (expand + improve).
+    if body.mode in (ResearchMode.EXPAND, ResearchMode.IMPROVE):
         begin_expand_scope(
             board_id,
             session_id,
@@ -301,16 +420,50 @@ async def stream_research_claude(
                 language=body.language,
             )
             evidence_briefing = briefing.get("briefing_text") or ""
+            n_res = len(briefing.get("results") or [])
+            eng = briefing.get("engines")
             yield (
                 "data: "
                 + json.dumps(
                     {
                         "status": "progress",
                         "text": (
-                            f"WEB_EVIDENCE engines={briefing.get('engines')} "
-                            f"results={len(briefing.get('results') or [])} "
+                            f"WEB_EVIDENCE engines={eng} "
+                            f"results={n_res} "
                             f"available={briefing.get('available')}"
                         ),
+                    }
+                )
+                + "\n\n"
+            )
+            # Structured card so UI shows web-collector before Claude starts.
+            from topix.integrations.research_progress import record_event as _rec_ev
+
+            _rec_ev(
+                session_id=session_id,
+                board_id=board_id,
+                event_type="agent_progress" if n_res else "agent_started",
+                label="Web evidence collector",
+                agent_id="web-evidence",
+                role="collector",
+                detail=f"engines={eng} · {n_res} results",
+                query=(body.instruction or "")[:120],
+            )
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "status": "agent",
+                        "session_id": session_id,
+                        "board_id": board_id,
+                        "event": {
+                            "event_type": "agent_progress",
+                            "label": "Web evidence collector",
+                            "agent_id": "web-evidence",
+                            "role": "collector",
+                            "detail": f"engines={eng} · {n_res} results",
+                            "query": (body.instruction or "")[:120],
+                        },
                     }
                 )
                 + "\n\n"
@@ -343,16 +496,19 @@ async def stream_research_claude(
         ResearchMode.REFRAME: "reframe (đổi taxonomy)",
         ResearchMode.EXPAND: "expand (đào sâu cụm)",
         ResearchMode.CRITIQUE: "critique (rà soát)",
+        ResearchMode.IMPROVE: "improve (cải thiện node)",
     }.get(body.mode, body.mode.value)
 
     from topix.integrations.research_progress import (
         clear_session,
         get_progress,
+        list_events_since,
         set_nodes_seen,
-        track_session,
+        snapshot_dict,
     )
 
-    track_session(session_id, board_id, body.mode.value)
+    # Session already tracked at start; do not reset (keeps web-evidence cards).
+    event_cursor = 0
 
     yield (
         "data: "
@@ -360,10 +516,50 @@ async def stream_research_claude(
             {
                 "status": "running",
                 "message": f"Claude [{effort}] · {mode_label}…",
+                "session_id": session_id,
+                "board_id": board_id,
             }
         )
         + "\n\n"
     )
+    # Seed UI with any events already recorded (planning + web collector).
+    seed_events, event_cursor = list_events_since(session_id, 0)
+    for se in seed_events:
+        yield (
+            "data: "
+            + json.dumps(
+                {
+                    "status": "agent",
+                    "session_id": session_id,
+                    "board_id": board_id,
+                    "event": {
+                        "id": se.id,
+                        "event_type": se.event_type,
+                        "label": se.label,
+                        "agent_id": se.agent_id,
+                        "role": se.role,
+                        "detail": se.detail,
+                        "query": se.query,
+                        "ts": se.ts,
+                    },
+                }
+            )
+            + "\n\n"
+        )
+    prog0 = get_progress(session_id)
+    if prog0 is not None:
+        yield (
+            "data: "
+            + json.dumps(
+                {
+                    "status": "agents_snapshot",
+                    "session_id": session_id,
+                    "board_id": board_id,
+                    "snapshot": snapshot_dict(prog0),
+                }
+            )
+            + "\n\n"
+        )
 
     async def _count_nodes() -> int:
         """Best-effort node count via integration API (local)."""
@@ -440,7 +636,45 @@ async def stream_research_claude(
                 elif kind == "stdout_done":
                     break
                 elif kind == "poll":
+                    # Flush new structured agent events to SSE (launcher timeline).
+                    new_events, event_cursor = list_events_since(session_id, event_cursor)
+                    for se in new_events:
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                {
+                                    "status": "agent",
+                                    "session_id": session_id,
+                                    "board_id": board_id,
+                                    "event": {
+                                        "id": se.id,
+                                        "event_type": se.event_type,
+                                        "label": se.label,
+                                        "agent_id": se.agent_id,
+                                        "role": se.role,
+                                        "detail": se.detail,
+                                        "query": se.query,
+                                        "ts": se.ts,
+                                    },
+                                }
+                            )
+                            + "\n\n"
+                        )
                     prog = get_progress(session_id)
+                    if prog is not None and new_events:
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                {
+                                    "status": "agents_snapshot",
+                                    "session_id": session_id,
+                                    "board_id": board_id,
+                                    "snapshot": snapshot_dict(prog),
+                                }
+                            )
+                            + "\n\n"
+                        )
+
                     count = await _count_nodes()
                     if count >= 0:
                         set_nodes_seen(session_id, count)
@@ -603,5 +837,5 @@ async def stream_research_claude(
         yield f"data: {json.dumps({'status': 'error', 'detail': str(exc)})}\n\n"
     finally:
         clear_session(session_id)
-        if body.mode == ResearchMode.EXPAND:
+        if body.mode in (ResearchMode.EXPAND, ResearchMode.IMPROVE):
             end_scope(board_id, session_id)

@@ -157,14 +157,36 @@ class NodePatchRequest(BaseModel):
 
 
 class ResearchEvent(BaseModel):
+    """Structured progress event for deep-research live UI (SSE + canvas)."""
+
     session_id: str
     event_type: str = Field(
         ...,
-        description="One of: planning, workstream_started, source_found, "
-                    "finding_added, cross_checking, synthesizing, completed, failed, cancelled"
+        description=(
+            "One of: planning, workstream_started, source_found, finding_added, "
+            "cross_checking, synthesizing, agent_started, agent_progress, "
+            "agent_done, agent_failed, completed, failed, cancelled"
+        ),
     )
     label: str | None = None
     board_id: str | None = None
+    # Sub-agent card fields (optional — inferred when omitted).
+    agent_id: str | None = Field(
+        default=None,
+        description="Stable id for a sub-agent/workstream card, e.g. ws-tv, critique",
+    )
+    role: str | None = Field(
+        default=None,
+        description="lead | workstream | collector | critique | writer | worker",
+    )
+    detail: str | None = Field(
+        default=None,
+        description="Short human line: what this agent is doing now",
+    )
+    query: str | None = Field(
+        default=None,
+        description="Search query / topic fragment the agent is pursuing",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -404,8 +426,46 @@ async def batch_create(
     # Expand-scope create budget (if an expand research session is active)
     from topix.integrations.research_scope import assert_can_create, note_created
 
+    # Dedupe source/evidence by URL: reuse an existing node id instead of
+    # creating a duplicate source the agent already added earlier.
+    from topix.integrations.research_citation import (
+        build_existing_url_index,
+        plan_dedup,
+    )
+
+    existing_graph = await graph_store.get_graph(board_id)
+    existing_nodes = [
+        {
+            "id": n.id,
+            "kind": n.type,
+            "content": (n.content.markdown if n.content else ""),
+            "label": (n.label.markdown if n.label else ""),
+        }
+        for n in (existing_graph.nodes if existing_graph else [])
+        if n.deleted_at is None
+    ] or []
+    existing_url_index = build_existing_url_index(existing_nodes)
+    new_dicts = [
+        {"client_ref": n.client_ref, "kind": n.kind, "metadata": n.metadata}
+        for n in body.nodes
+    ]
+    nodes_to_create_dicts, reuse_map = plan_dedup(new_dicts, existing_url_index)
+    nodes_to_create = [
+        n for n in body.nodes if n.client_ref not in reuse_map
+    ]
+    # Edges and refs resolve reused ids transparently.
+    for client_ref, existing_id in reuse_map.items():
+        ref_to_id[client_ref] = existing_id
+        node_results.append(NodeResult(
+            client_ref=client_ref, node_id=existing_id, created=False,
+        ))
+        logger.info(
+            "integration: deduped source client_ref=%s -> existing node=%s",
+            client_ref, existing_id,
+        )
+
     try:
-        assert_can_create(board_id, len(body.nodes))
+        assert_can_create(board_id, len(nodes_to_create))
     except ValueError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -413,7 +473,7 @@ async def batch_create(
     notes_to_add: list[Note] = []
     node_meta: list[tuple[str, bool, str]] = []  # (client_ref, was_redacted, kind)
 
-    for node_input in body.nodes:
+    for node_input in nodes_to_create:
         try:
             note, was_redacted = await _build_note(
                 graph_store,
@@ -671,22 +731,97 @@ async def research_event(
     request: Request,
     _: None = Depends(_verify_token),
 ):
-    """Log a structured research event (no canvas mutation)."""
-    from topix.integrations.research_progress import record_event
+    """Log a structured research event and push it to live canvas clients."""
+    from topix.integrations.research_progress import (
+        get_progress,
+        record_event,
+        snapshot_dict,
+    )
 
     # Prefer path board_id; fall back to body if clients send only body board.
     target_board = board_id or event.board_id or ""
-    record_event(
+    stored = record_event(
         session_id=event.session_id,
         board_id=target_board,
         event_type=event.event_type,
         label=event.label,
+        agent_id=event.agent_id,
+        role=event.role,
+        detail=event.detail,
+        query=event.query,
     )
     logger.info(
-        "integration: research_event board=%s session=%s type=%s label=%s",
-        target_board, event.session_id, event.event_type, event.label,
+        "integration: research_event board=%s session=%s type=%s agent=%s label=%s",
+        target_board,
+        event.session_id,
+        event.event_type,
+        stored.agent_id,
+        event.label,
     )
-    return {"received": True, "event_type": event.event_type, "board_id": target_board}
+
+    # Live board panel: broadcast full session snapshot (agents + last event).
+    if target_board:
+        try:
+            bridge = _bridge(request)
+            prog = get_progress(event.session_id)
+            payload = {
+                "session_id": event.session_id,
+                "event": {
+                    "id": stored.id,
+                    "event_type": stored.event_type,
+                    "label": stored.label,
+                    "agent_id": stored.agent_id,
+                    "role": stored.role,
+                    "detail": stored.detail,
+                    "query": stored.query,
+                    "ts": stored.ts,
+                },
+            }
+            if prog is not None:
+                payload["snapshot"] = snapshot_dict(prog)
+            await bridge.broadcast_research_progress(
+                board_id=target_board,
+                payload=payload,
+            )
+        except Exception:
+            logger.exception(
+                "integration: research-progress broadcast failed board=%s",
+                target_board,
+            )
+
+    return {
+        "received": True,
+        "event_type": event.event_type,
+        "board_id": target_board,
+        "agent_id": stored.agent_id,
+        "event_id": stored.id,
+    }
+
+
+@router.get("/boards/{board_id}/research-progress")
+async def get_research_progress(
+    board_id: str,
+    session_id: str | None = None,
+    _: None = Depends(_verify_token),
+):
+    """Poll live research agent cards + timeline for a board/session."""
+    from topix.integrations.research_progress import (
+        get_board_progress,
+        snapshot_dict,
+    )
+
+    prog = get_board_progress(board_id, session_id=session_id)
+    if prog is None:
+        return {
+            "board_id": board_id,
+            "session_id": session_id,
+            "active": False,
+            "agents": [],
+            "events": [],
+        }
+    snap = snapshot_dict(prog)
+    snap["active"] = not (prog.completed or prog.failed)
+    return snap
 
 
 # ---------------------------------------------------------------------------
@@ -724,10 +859,11 @@ async def research_clarify(
     body: ClarifyRequest,
     _: None = Depends(_verify_token),
 ):
-    """Interactive clarify gate: questions first, then locked scope brief.
+    """Interactive clarify gate: Claude CLI asks back per gap, then scope fold.
 
-    stage=questions → 5–7 clarifying questions (Ollama).
-    stage=scope → fold answers into scope_brief for explore instruction.
+    stage=questions → Claude CLI reads the board (board_id/mode/focus_node_ids)
+    and returns 0–4 personalized questions (or clear=true); falls back to
+    Ollama/static. stage=scope → deterministic fold of topic + answers.
     """
     return await run_clarify(body)
 

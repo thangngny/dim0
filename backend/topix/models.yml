@@ -55,6 +55,15 @@ llm:
     routes:
       - { via: ollama_cloud, model: glm-5.2 }
       - { via: openrouter,   model: z-ai/glm-5.2:nitro }
+  # deepseek-v4-pro leads: best agentic tool-calling on Ollama Cloud
+  # (tools badge, 1M ctx, top SWE/Terminal/BrowseComp/Toolathlon scores).
+  - id: deepseek-v4-pro
+    label: DeepSeek V4 Pro
+    family: deepseek
+    tier: pro
+    routes:
+      - { via: ollama_cloud, model: deepseek-v4-pro }
+      - { via: openrouter,   model: deepseek/deepseek-v4-pro:nitro }
   - id: glm-5.1
     label: GLM 5.1
     family: z-ai
@@ -69,13 +78,6 @@ llm:
     routes:
       - { via: ollama_cloud, model: minimax-m2.7 }
       - { via: openrouter,   model: minimax/minimax-m2.7:nitro }
-  - id: deepseek-v4-pro
-    label: DeepSeek V4 Pro
-    family: deepseek
-    tier: pro
-    routes:
-      - { via: ollama_cloud, model: deepseek-v4-pro }
-      - { via: openrouter,   model: deepseek/deepseek-v4-pro:nitro }
   - id: deepseek-v4-flash
     label: DeepSeek V4 Flash
     family: deepseek

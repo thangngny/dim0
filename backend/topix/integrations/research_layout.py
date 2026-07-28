@@ -147,6 +147,24 @@ async def apply_research_layout(
         tier = _KIND_TIER.get(kind, 4)
         tiers[tier].append(note)
 
+    # Stack below existing content so a second pass doesn't overlap the first.
+    existing_graph = await graph_store.get_graph(board_id)
+    existing_nodes = []
+    if existing_graph:
+        for n in existing_graph.nodes:
+            pos = getattr(n.properties, "node_position", None)
+            py = getattr(getattr(pos, "position", None), "y", None) if pos else None
+            sz = getattr(n.properties, "node_size", None)
+            ph = getattr(getattr(sz, "size", None), "height", None) if sz else None
+            existing_nodes.append({
+                "id": n.id,
+                "deleted": n.deleted_at is not None,
+                "y": float(py) if py is not None else None,
+                "h": float(ph) if ph is not None else None,
+            })
+    from topix.integrations.research_layout_math import compute_layout_origin_y
+    origin_y = compute_layout_origin_y(existing_nodes, created_ids)
+
     moved: list[str] = []
     patches: list[tuple[str, dict]] = []
 
@@ -161,7 +179,7 @@ async def apply_research_layout(
         total_w = sum(widths) + _NODE_GAP_X * max(0, len(row) - 1)
         # Center row around a soft origin
         x = _ORIGIN_X + max(0.0, (1400.0 - total_w) / 2.0)
-        y = _ORIGIN_Y + tier * _TIER_GAP_Y
+        y = origin_y + tier * _TIER_GAP_Y
         for note, w in zip(row, widths):
             patches.append((
                 note.id,
