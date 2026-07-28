@@ -59,15 +59,51 @@ class PypdfParser:
         filepath: str,
         max_pages: int = 200,
     ) -> list[dict[str, int | str]]:
-        """Extract per-page text from a text-based PDF."""
+        """Extract per-page text from a PDF.
+
+        Text-based pages use pypdf. Pages with little/no embedded text
+        (scanned / image PDFs) fall back to vision OCR: the page is
+        rendered to an image and transcribed by the Ollama Cloud vision
+        model — so scanned PDFs work without a Mistral key.
+        """
         assert self.detect_mime_type(filepath) == MimeTypeEnum.PDF, "Unsupported file format"
         with open(filepath, "rb") as f:
             reader = PdfReader(f)
             pages: list[dict[str, int | str]] = []
             for i, page in enumerate(reader.pages[:max_pages]):
                 text = (page.extract_text() or "").strip()
+                # Thin text → likely a scanned/image page → vision OCR.
+                if len(text) < 20:
+                    ocr = await _vision_ocr_page(filepath, i)
+                    if ocr:
+                        text = ocr
                 pages.append({"markdown": text, "page": i})
             return pages
+
+
+async def _vision_ocr_page(filepath: str, page_index: int) -> str:
+    """Render one PDF page to an image + transcribe it via the Ollama Cloud vision model."""
+    try:
+        import fitz  # pymupdf
+        from topix.agents.notes.vision import _describe_image  # local import to avoid cycle
+    except ImportError:
+        return ""
+    try:
+        doc = fitz.open(filepath)
+        if page_index >= len(doc):
+            return ""
+        pix = doc[page_index].get_pixmap(dpi=150)
+        png_bytes = pix.tobytes("png")
+        import base64 as _b64
+        data_url = f"data:image/png;base64,{_b64.b64encode(png_bytes).decode('utf-8')}"
+        doc.close()
+        return await _describe_image(
+            data_url,
+            "Transcribe ALL text visible on this page exactly as written, preserving line breaks and structure. If there is no text, say '(no text)'.",
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("vision OCR failed on page %s: %s", page_index, e)
+        return ""
 
 
 def get_parser():

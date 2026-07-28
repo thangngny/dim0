@@ -40,6 +40,7 @@ dependencies = [
     "pypdf>=6.3.0",
     "uvicorn==0.41.0",
     "zstandard>=0.23.0",
+    "pymupdf>=1.28.0",
 ]
 
 [project.optional-dependencies]
