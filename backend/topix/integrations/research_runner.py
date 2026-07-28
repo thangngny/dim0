@@ -122,8 +122,15 @@ def graph_writer_rules(*, board_id: str, max_new_nodes: int, session_id: str, ph
         f"12) ALWAYS pass board_id=\"{board_id}\" on EVERY Dim0 MCP tool call "
         f"(get_board, upsert, create, update, delete, layout, research_events). "
         f"Never omit board_id. Never write to another board.\n"
-        "13) When finished writing the graph, emit research_event event_type=completed "
-        "with a short label (required for UI to finish promptly).\n"
+        "13) `completed` is a WRITE-POSTCONDITION, not a planning signal. Emit "
+        "event_type=completed ONLY AFTER: (a) dim0_upsert_research_graph or "
+        "dim0_create_nodes has returned success, AND (b) dim0_list_nodes confirms "
+        ">=1 node exists on this board. NEVER emit completed before writing — the "
+        "runner watches `completed` to terminate the run, so emitting it with 0 "
+        "nodes KILLS the process before any write lands and leaves the board empty. "
+        "If you genuinely have nothing to write, emit `failed` with the reason in "
+        "detail instead. Order every run: write graph -> verify via list_nodes -> "
+        "then emit completed.\n"
         "14) PRESENTATION / GỌN GÀNG (anti-dump):\n"
         "   - titles ≤ 50 chars, one idea per node, body 2–5 lines max.\n"
         "   - hierarchy edges only: question→workstream→finding→source (and summary→ws).\n"
@@ -600,6 +607,7 @@ async def stream_research_claude(
         early_done = False
         last_node_count = -1
         stable_since: float | None = None
+        completion_grace_started: float | None = None
         baseline = await _count_nodes()
         if baseline < 0:
             baseline = 0
@@ -695,20 +703,58 @@ async def stream_research_claude(
                         elif count > baseline and stable_since is None:
                             stable_since = time.time()
 
-                    # Early done: MCP completed event
+                    # Early done: MCP completed event — but only treat as done
+                    # when the graph has actually been written. Agents sometimes
+                    # emit `completed` before calling the write tool; breaking on
+                    # that premature signal kills Claude before nodes land →
+                    # 0-node board. Guard: require nodes > baseline, else grace.
                     if prog and prog.completed:
-                        yield (
-                            "data: "
-                            + json.dumps(
-                                {
-                                    "status": "progress",
-                                    "text": f"Research completed event: {prog.last_label or 'ok'}",
-                                }
+                        if last_node_count > baseline:
+                            yield (
+                                "data: "
+                                + json.dumps(
+                                    {
+                                        "status": "progress",
+                                        "text": f"Research completed event: {prog.last_label or 'ok'}",
+                                    }
+                                )
+                                + "\n\n"
                             )
-                            + "\n\n"
-                        )
-                        early_done = True
-                        break
+                            early_done = True
+                            break
+                        # completed fired but nothing written yet — give the agent
+                        # a grace window to finish writing before terminating.
+                        if completion_grace_started is None:
+                            completion_grace_started = time.time()
+                            yield (
+                                "data: "
+                                + json.dumps(
+                                    {
+                                        "status": "progress",
+                                        "text": (
+                                            "Completed event received but 0 nodes written — "
+                                            "waiting for graph write…"
+                                        ),
+                                    }
+                                )
+                                + "\n\n"
+                            )
+                        elif time.time() - completion_grace_started >= 30.0:
+                            yield (
+                                "data: "
+                                + json.dumps(
+                                    {
+                                        "status": "progress",
+                                        "text": (
+                                            "Completed event but 0 nodes after 30s grace — "
+                                            "finishing (research wrote nothing)."
+                                        ),
+                                    }
+                                )
+                                + "\n\n"
+                            )
+                            early_done = True
+                            break
 
                     if prog and prog.failed:
                         yield (
@@ -778,6 +824,11 @@ async def stream_research_claude(
                         "mode": body.mode.value,
                         "early": True,
                         "nodes": last_node_count if last_node_count >= 0 else None,
+                        "warning": (
+                            "research completed with 0 nodes written"
+                            if last_node_count <= baseline
+                            else None
+                        ),
                     }
                 )
                 + "\n\n"
