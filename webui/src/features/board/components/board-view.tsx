@@ -9,6 +9,7 @@ import {
 import { FloatingAssistant } from "./flow/floating-assistant/floating-assistant"
 import { CopilotSheet } from "./flow/copilot-sheet"
 import { ResearchHandoffBanner } from "./research-handoff-banner"
+import { ResearchLivePanel } from "./research-live-panel"
 
 
 /**
@@ -85,6 +86,9 @@ export const BoardView: React.FC = () => {
             }}
             onDismiss={() => setShowResearchBanner(false)}
           />
+        )}
+        {boardId && !presentationMode && (
+          <ResearchLivePanel boardId={boardId} forceOpen={isResearchHandoff} />
         )}
         {!chatSheetOpen && !presentationMode && boardId && (
           <FloatingAssistant
