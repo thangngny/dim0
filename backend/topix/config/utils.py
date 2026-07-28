@@ -4,11 +4,18 @@ import logging
 import os
 import secrets
 
-from dopplersdk import DopplerSDK
+try:
+    from dopplersdk import DopplerSDK
+except ImportError:  # dopplersdk is optional in local/dev (use .env)
+    DopplerSDK = None
 
 from topix.datatypes.stage import StageEnum
 
 logger = logging.getLogger(__name__)
+
+
+class DopplerUnavailableError(RuntimeError):
+    """Raised when the Doppler SDK is not installed and no token is set."""
 
 
 def generate_jwt_secret() -> str:
@@ -21,6 +28,10 @@ def load_secrets(
     stage: StageEnum = StageEnum.LOCAL
 ):
     """Load secrets from Doppler based on the provided stage."""
+    if DopplerSDK is None:
+        raise DopplerUnavailableError(
+            "dopplersdk not installed — falling back to .env defaults."
+        )
     if stage in [StageEnum.LOCAL, StageEnum.DEV, StageEnum.TEST]:
         secret_name = f"dev_{stage}"
     else:

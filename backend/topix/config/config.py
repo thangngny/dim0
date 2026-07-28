@@ -11,7 +11,7 @@ from http_exceptions.client_exceptions import BadRequestException, UnauthorizedE
 from pydantic import BaseModel, Field, SecretStr
 from yaml import safe_load
 
-from topix.config.utils import generate_jwt_secret, load_secrets
+from topix.config.utils import DopplerUnavailableError, generate_jwt_secret, load_secrets
 from topix.datatypes.stage import StageEnum
 from topix.utils.singleton import SingletonMeta
 
@@ -288,6 +288,11 @@ class Config(BaseModel, metaclass=ConfigMeta):
         try:
             secret = load_secrets(stage)
             config_data = safe_load(secret)
+        except DopplerUnavailableError as e:
+            logger.warning(
+                f"{e} — will use default config from .env.",
+            )
+            config_data = {}
         except BadRequestException as e:
             if hasattr(e, 'status_code') and e.status_code == 400:
                 logger.error(
