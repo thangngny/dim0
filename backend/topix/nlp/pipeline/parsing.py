@@ -24,7 +24,7 @@ from topix.datatypes.property import (
 )
 from topix.datatypes.resource import RichText
 from topix.nlp.chunking import Chunker
-from topix.nlp.parser import MistralParser
+from topix.nlp.parser import get_parser
 from topix.store.qdrant.store import ContentStore
 from topix.utils.colors import TAILWIND_200_ADAPTED
 from topix.utils.graph.layout import LayoutDirection, displace_nodes, layout_directed
@@ -48,7 +48,7 @@ class ParsingPipeline:
 
     def __init__(self) -> None:
         """Initialize the parsing pipeline."""
-        self.parser = MistralParser.from_config()
+        self.parser = get_parser()
         self.chunker = Chunker()
         self.vector_store = ContentStore.from_config()
         self.mapifier = DocumentMindmapAgent()
@@ -144,26 +144,29 @@ class ParsingPipeline:
             pages
         )
 
-        chunks, (notes, links) = await asyncio.gather(
-            run_in_threadpool(
-                self.chunker.chunk_markdowns,
-                pages
-            ),
-            self._mapify(
+        # Mindmap generation is best-effort: a weak model that wraps JSON in
+        # fences or returns malformed structured output shouldn't fail the
+        # whole upload. The document + its text chunks are still useful on
+        # the board even without the auto-mindmap.
+        try:
+            notes, links = await self._mapify(
                 document_text="\n\n".join(page['markdown'] for page in pages)
             )
-        )
+        except Exception as mapify_err:  # noqa: BLE001
+            logger.warning("document mindmap generation failed (degraded upload): %s", mapify_err)
+            notes, links = [], []
 
         for chunk in chunks:
             chunk.document_uid = document.id
             chunk.properties.document_label = TextProperty(text=document_name)
 
-        links.append(
-            Link(
-                source=document.id,
-                target=notes[0].id,
+        if notes:
+            links.append(
+                Link(
+                    source=document.id,
+                    target=notes[0].id,
+                )
             )
-        )
 
         return document, chunks, notes, links
 

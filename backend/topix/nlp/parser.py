@@ -30,6 +30,57 @@ class MistralParser():
 
         return cls(api_key=mistral_config.api_key.get_secret_value() if mistral_config.api_key else None)
 
+
+class PypdfParser:
+    """Local PDF text extractor (no API key) used as a fallback when Mistral
+    OCR is not configured.
+
+    Extracts embedded text per page with pypdf. Text-based PDFs parse fine;
+    scanned/image-only PDFs yield empty pages (OCR requires Mistral). Same
+    `.parse(filepath)` return shape as MistralParser so the pipeline is
+    agnostic to which parser it holds.
+    """
+
+    def get_num_pages(self, fname: str) -> int:
+        try:
+            with open(fname, "rb") as f:
+                return len(PdfReader(f).pages)
+        except Exception as e:  # noqa: BLE001
+            logger.error("pypdf page count failed: %s", e)
+            return -1
+
+    def detect_mime_type(self, filepath: str) -> MimeTypeEnum:
+        if os.path.splitext(filepath)[1].lower() == ".pdf":
+            return MimeTypeEnum.PDF
+        raise ValueError("Unsupported file format")
+
+    async def parse(
+        self,
+        filepath: str,
+        max_pages: int = 200,
+    ) -> list[dict[str, int | str]]:
+        """Extract per-page text from a text-based PDF."""
+        assert self.detect_mime_type(filepath) == MimeTypeEnum.PDF, "Unsupported file format"
+        with open(filepath, "rb") as f:
+            reader = PdfReader(f)
+            pages: list[dict[str, int | str]] = []
+            for i, page in enumerate(reader.pages[:max_pages]):
+                text = (page.extract_text() or "").strip()
+                pages.append({"markdown": text, "page": i})
+            return pages
+
+
+def get_parser():
+    """Return a MistralParser if MISTRAL_API_KEY is configured, else a
+    PypdfParser fallback so document upload works locally without an OCR
+    key (text PDFs only; scanned PDFs need Mistral).
+    """
+    try:
+        return MistralParser.from_config()
+    except ValueError:
+        logger.info("Mistral OCR key not set — falling back to pypdf text extraction (no OCR).")
+        return PypdfParser()
+
     def get_num_pages(self, fname: str) -> int:
         """Get the number of pages in a PDF file.
 
