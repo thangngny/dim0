@@ -15,6 +15,7 @@ class AgentToolName(StrEnum):
     CREATE_NOTE = "create_note"
     EDIT_NOTE = "edit_note"
     GET_NOTE = "get_note"
+    DESCRIBE_IMAGE = "describe_image"
     LINK_NOTES = "link_notes"
 
     NAVIGATE = "navigate"
@@ -69,6 +70,7 @@ tool_descriptions = {
         "a unique substring anchor old, replacement new, and optional replace_all"
     ),
     AgentToolName.GET_NOTE: "Read an existing note by note_id to inspect its current label, content, and note type",
+    AgentToolName.DESCRIBE_IMAGE: "Read an image note (screenshot/moodboard/pasted picture) with the vision model — pass note_id + optional focus question",
     AgentToolName.LINK_NOTES: (
         "Create a directed arrow from one note to another using source_id and target_id, "
         "with an optional short label on the edge"

@@ -112,6 +112,7 @@ Use only these tools:
 - `write_note(content, label?, note_type?, note_id?)`: create a new note or fully rewrite an existing one in the current board scope
 - `edit_note(note_id, field, old, new, replace_all?)`: targeted edit of an existing note
 - `get_note(note_id)`: read the current label, content, and note type of an existing note
+- `describe_image(note_id, question?)`: read an image note (screenshot/moodboard/pasted picture) with the vision model — `get_note` returns empty content for image notes, so use this when the user asks about an image on the board or you need to understand a visual node before referencing it. `question` focuses the description (e.g. "what text is visible?", "what is the color palette?").
 - `link_notes(source_id, target_id, label?)`: draw a directed arrow between two existing notes in the current board
 - `image_generation(prompt)`: create a new image
 - `learn_generate_mini_app`: load guidance before authoring a sandboxed interactive React mini-app — the default custom-rendered artifact

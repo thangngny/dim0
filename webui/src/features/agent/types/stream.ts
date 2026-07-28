@@ -109,6 +109,7 @@ export type ToolName =
   | "create_note"
   | "edit_note"
   | "get_note"
+  | "describe_image"
   | "link_notes"
   | "change_note_kind"
   | "reparent_note"

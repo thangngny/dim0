@@ -49,6 +49,7 @@ export const useChatStore = create<ChatStore>((set) => ({
     "memory_search",
     "code_interpreter",
     "get_note",
+    "describe_image",
     "write_note",
     "edit_note",
     "link_notes",

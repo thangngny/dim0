@@ -29,6 +29,7 @@ from topix.agents.notes.tools import (
     create_split_note_tool,
     create_write_note_tool,
 )
+from topix.agents.notes.vision import create_describe_image_tool
 from topix.agents.websearch.fetch import fetch_url_content_tool
 from topix.agents.websearch.handler import WebSearchHandler
 from topix.agents.widgets.finance import display_stock_widget_tool
@@ -103,6 +104,7 @@ class Plan(BaseAgent):
             tools.append(create_write_note_tool(graph_store, graph_uid, root_id=root_id, agent_bridge=agent_bridge))
             tools.append(create_edit_note_tool(graph_store, graph_uid, agent_bridge=agent_bridge))
             tools.append(create_get_note_tool(graph_store, graph_uid))
+            tools.append(create_describe_image_tool(graph_store, graph_uid))
             tools.append(create_link_notes_tool(graph_store, graph_uid, root_id=root_id, agent_bridge=agent_bridge))
             tools.append(create_change_note_kind_tool(graph_store, graph_uid, agent_bridge=agent_bridge))
             tools.append(create_reparent_note_tool(graph_store, graph_uid, agent_bridge=agent_bridge))
