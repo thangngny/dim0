@@ -307,6 +307,12 @@ def _node_patch_to_note_data(patch: dict[str, Any]) -> dict[str, Any]:  # noqa: 
         data.setdefault("style", {})["angle"] = float(patch["angle"]) * RAD_TO_DEG
     if "content" in patch:
         data["content"] = {"markdown": str(patch["content"] or "")}
+    # `groups` is a top-level Node field (membership in canvas-harness
+    # groups); persist it to the Note's `style.group_ids` so cluster
+    # membership survives a reload. Read back via `note_to_wire` which
+    # lifts `style.group_ids` → `Node.groups`.
+    if "groups" in patch:
+        data.setdefault("style", {})["group_ids"] = list(patch["groups"] or [])
 
     wire_style = patch.get("style")
     if isinstance(wire_style, dict):

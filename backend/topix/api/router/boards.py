@@ -69,6 +69,34 @@ async def update_graph(
     return await store.update_graph(graph_uid=graph_id, data=body.data)
 
 
+@router.get("/{graph_id}/research-progress/", include_in_schema=False)
+@router.get("/{graph_id}/research-progress")
+@with_standard_response
+async def board_research_progress(
+    response: Response,
+    request: Request,
+    graph_id: Annotated[str, Path(description="Graph ID")],
+    user_id: Annotated[str, Depends(get_current_user_uid)],
+    _: Annotated[None, Depends(verify_board_read_access)],
+    session_id: Annotated[str | None, Query(description="Optional research session id")] = None,
+):
+    """Poll live deep-research sub-agent cards for this board (canvas panel)."""
+    from topix.integrations.research_progress import get_board_progress, snapshot_dict
+
+    prog = get_board_progress(graph_id, session_id=session_id)
+    if prog is None:
+        return {
+            "board_id": graph_id,
+            "session_id": session_id,
+            "active": False,
+            "agents": [],
+            "events": [],
+        }
+    snap = snapshot_dict(prog)
+    snap["active"] = not (prog.completed or prog.failed)
+    return snap
+
+
 @router.get("/{graph_id}/contents/", include_in_schema=False)
 @router.get("/{graph_id}/contents")
 @with_standard_response

@@ -514,6 +514,31 @@ class AgentBoardBridge:
 
     # ------------------------------------------------------------------
 
+    async def broadcast_research_progress(
+        self,
+        *,
+        board_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Push a non-op `research-progress` frame to live board clients.
+
+        Does not advance collab seq (UI-only signal). No-ops when no room.
+        """
+        room = self._registry.get(board_id)
+        if room is None:
+            return
+        frame = json.dumps({
+            "kind": "research-progress",
+            "board_id": board_id,
+            "ts": int(time.time() * 1000),
+            **payload,
+        })
+        for c in list(room.clients.values()):
+            try:
+                await c.socket.send_text(frame)
+            except Exception:
+                logger.debug("agent bridge research-progress send failed", exc_info=True)
+
     async def _broadcast(self, *, board_id: str, ops: list[dict[str, Any]]) -> None:
         """Send a `peer-op` to every connected client in `board_id`'s room.
 
