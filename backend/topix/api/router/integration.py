@@ -831,6 +831,7 @@ async def get_research_progress(
 from fastapi.responses import StreamingResponse
 
 from topix.integrations.research_clarify import ClarifyRequest, run_clarify
+from topix.integrations.research_plan import PlanRequest, run_plan
 from topix.integrations.research_runner import (
     ResearchBudget,
     ResearchMode,
@@ -866,6 +867,18 @@ async def research_clarify(
     Ollama/static. stage=scope → deterministic fold of topic + answers.
     """
     return await run_clarify(body)
+
+
+@router.post("/research/plan")
+async def research_plan(
+    body: PlanRequest,
+    _: None = Depends(_verify_token),
+):
+    """Approve-before-run gate: produce a structured execution plan (workstreams +
+    search strategy + intended sources) the launcher shows before the full
+    research SSE fires. Reuses the clarify LiteLLM JSON path.
+    """
+    return await run_plan(body)
 
 
 class SetKindRequest(BaseModel):

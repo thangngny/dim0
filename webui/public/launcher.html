@@ -371,6 +371,15 @@
         <label>Scope brief (có thể sửa trước khi explore)</label>
         <textarea id="scopeBrief" style="min-height:160px"></textarea>
       </div>
+      <button class="btn secondary" id="planBtn" onclick="doPlan()">📋 Xem kế hoạch trước khi chạy</button>
+      <div id="planBox" class="result-box" style="display:none;margin-bottom:1rem;text-align:left">
+        <h3>📋 Kế hoạch nghiên cứu</h3>
+        <p id="planSummary" style="margin:0.5rem 0;line-height:1.45"></p>
+        <div id="planWorkstreams" style="display:flex;flex-direction:column;gap:0.5rem"></div>
+        <div id="planRisks" style="margin-top:0.5rem;color:var(--muted,#888);font-size:0.85rem"></div>
+        <div id="planStatus" class="status-bar"></div>
+        <button class="btn" id="planApproveBtn" onclick="doGenerate()" style="margin-top:0.75rem">✅ Duyệt & chạy Explore</button>
+      </div>
       <button class="btn" id="generateBtn" onclick="doGenerate()">✦ Explore theo scope này</button>
       <button class="btn secondary" onclick="backToQuestions()">← Sửa câu trả lời</button>
       <button type="button" class="btn secondary" id="stopExploreBtn" style="display:none">⏹ Dừng</button>
@@ -699,6 +708,51 @@
       saveState({ lastTopic: topic, lastLanguage, lastStep: 2, jwt, boardId })
     } catch (e) {
       setStatus("clarifyStatus", "error", "❌ " + e.message)
+    } finally {
+      btn.disabled = false
+    }
+  }
+
+  async function doPlan() {
+    const topic = document.getElementById("topic").value.trim()
+    const scopeBrief = document.getElementById("scopeBrief").value.trim()
+    const btn = document.getElementById("planBtn")
+    btn.disabled = true
+    setStatus("planStatus", "running", "Đang soạn kế hoạch...")
+    const box = document.getElementById("planBox")
+    box.style.display = "block"
+    try {
+      const r = await fetch(`${BACKEND}/integration/research/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Integration-Token": TOKEN },
+        body: JSON.stringify({
+          topic: topic.slice(0, 2000),
+          scope_brief: scopeBrief,
+          mode: "explore",
+          language: lastLanguage || "vi",
+        }),
+      })
+      if (!r.ok) throw new Error(`plan failed: ${r.status}`)
+      const raw = await r.json()
+      const p = raw.workstreams ? raw : raw.data || raw
+      document.getElementById("planSummary").textContent = p.summary || ""
+      const wsBox = document.getElementById("planWorkstreams")
+      wsBox.innerHTML = ""
+      for (const ws of p.workstreams || []) {
+        const card = document.createElement("div")
+        card.style.cssText = "border:1px solid var(--border,#ddd);border-radius:6px;padding:0.5rem 0.75rem"
+        const sources = (ws.intended_sources || []).join(" · ")
+        card.innerHTML =
+          `<div style="font-weight:600">${ws.title || ws.id}${ws.axis ? ` <span style="color:var(--muted,#888);font-weight:400">· ${ws.axis}</span>` : ""}</div>` +
+          `<div style="font-size:0.85rem;margin:0.25rem 0">${ws.search_strategy || ""}</div>` +
+          (sources ? `<div style="font-size:0.8rem;color:var(--muted,#888)">Nguồn: ${sources}</div>` : "")
+        wsBox.appendChild(card)
+      }
+      const risks = (p.risks || []).map((x) => "⚠ " + x).join("\n")
+      document.getElementById("planRisks").textContent = risks
+      setStatus("planStatus", "done", "Kế hoạch sẵn sàng — duyệt để chạy.")
+    } catch (e) {
+      setStatus("planStatus", "error", "❌ " + e.message)
     } finally {
       btn.disabled = false
     }
