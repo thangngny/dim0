@@ -20,16 +20,17 @@ const DEG_TO_RAD = Math.PI / 180
 /**
  * Custom node types where the lib's height autoFit must be off.
  *
- * autoFit measures `node.content` and forces `node.h` to fit on
- * resize-commit. For these types `node.content` is the full body
- * (sheet markdown, code sandbox source, widget HTML/JS) but the React
- * view only renders a preview — so autoFit would snap the node tall
- * enough for the whole body the user can't see, breaking height
- * resize. See migration plan §4.x.
+ * autoFit measures `node.content` and forces `node.h` to grow to fit on
+ * commit (grow-only). `sheet` is intentionally NOT in this set: the sheet
+ * view renders the FULL markdown body (not a preview), so letting it
+ * auto-fit means a long note grows to show all its content instead of
+ * clipping — the user no longer has to drag the node taller to read it.
+ * The tradeoff: a sheet can't be shrunk below its content height (matches
+ * tldraw/excalidraw). For `code-sandbox`/`widget`/`mini-app` the view
+ * renders a preview, so autoFit stays off there.
  */
 export const AUTOFIT_DISABLED_TYPES = new Set([
   "folder",
-  "sheet",
   "code-sandbox",
   "widget",
   "mini-app",
