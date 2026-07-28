@@ -3,6 +3,7 @@
 import pytest
 
 from topix.agents.assistant import auto_model
+from topix.config.catalog import Resolved
 
 PROVIDER_KEYS = [
     "OPENAI_API_KEY",
@@ -45,6 +46,18 @@ async def test_classifier_works_for_native_non_openai_provider(clean_keys, monke
     'medium') for providers like Anthropic that are not OpenAI-compatible.
     """
     clean_keys.setenv("ANTHROPIC_API_KEY", "an-x")
+
+    # Isolate from local env config: keyless local providers (e.g. Ollama)
+    # otherwise win the catalog's "best available lite" pick, so pin the
+    # resolved model to a native Anthropic route regardless of environment.
+    anthropic_lite = Resolved(
+        id="anthropic/claude-haiku", label="Haiku", family="claude",
+        tier="lite", dim=None, provider="anthropic",
+        model="claude-haiku", call="anthropic/claude-haiku",
+    )
+    monkeypatch.setattr(
+        auto_model.catalog, "default_resolved", lambda tier=None: anthropic_lite
+    )
 
     captured = {}
 
