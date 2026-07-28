@@ -249,7 +249,7 @@
     <div class="field">
       <label>Board ID <span style="color:#ef4444">*</span></label>
       <input id="boardId" type="text" placeholder="Dán board ID từ URL Dim0 vào đây (xem tab Hướng dẫn)" />
-      <p class="hint">Lấy từ URL: <code>https://sie-villas-cell-attempts.trycloudflare.com/boards/<strong>ID_NÀY</strong></code></p>
+      <p class="hint">Lấy từ URL: <code>https://seek-example-mac-doug.trycloudflare.com/boards/<strong>ID_NÀY</strong></code></p>
     </div>
 
     <div class="field">
@@ -292,7 +292,7 @@
     <div class="guide-section">
       <h3>🔐 Tài khoản đăng nhập Dim0</h3>
       <div class="info-box" style="font-size:0.9rem;">
-        <p>Truy cập: <a href="https://sie-villas-cell-attempts.trycloudflare.com" target="_blank"><strong>Dim0 Canvas →</strong></a></p>
+        <p>Truy cập: <a href="https://seek-example-mac-doug.trycloudflare.com" target="_blank"><strong>Dim0 Canvas →</strong></a></p>
         <div style="display:flex;gap:1.5rem;margin-top:0.75rem;flex-wrap:wrap;">
           <div>
             <div style="font-size:0.72rem;color:#93c5fd;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.2rem;">Email</div>
@@ -318,7 +318,7 @@
           <div class="step-num">1</div>
           <div class="step-body">
             <strong>Đăng nhập → Tạo board mới</strong>
-            <p>Mở <a href="https://sie-villas-cell-attempts.trycloudflare.com" target="_blank">Dim0 Canvas</a> → đăng nhập bằng tài khoản trên → nhấn <code>+ New Board</code></p>
+            <p>Mở <a href="https://seek-example-mac-doug.trycloudflare.com" target="_blank">Dim0 Canvas</a> → đăng nhập bằng tài khoản trên → nhấn <code>+ New Board</code></p>
           </div>
         </div>
 
@@ -379,8 +379,8 @@
 </footer>
 
 <script>
-  const BACKEND = "https://threatening-postings-testament-jar.trycloudflare.com";
-  const FRONTEND = "https://sie-villas-cell-attempts.trycloudflare.com";
+  const BACKEND = "http://localhost:8899";
+  const FRONTEND = "http://localhost:5173";
   // Token đã điền sẵn trong hidden input — không cần localStorage
 
   function showTab(name) {
@@ -423,7 +423,7 @@
     const language = document.getElementById('language').value;
     const token    = document.getElementById('token').value.trim();
 
-    if (!boardId) { alert('Vui lòng nhập Board ID\n\nLấy từ URL sau khi tạo board trên Dim0:\nhttps://sie-villas-cell-attempts.trycloudflare.com'); return; }
+    if (!boardId) { alert('Vui lòng nhập Board ID\n\nLấy từ URL sau khi tạo board trên Dim0:\nhttps://seek-example-mac-doug.trycloudflare.com'); return; }
     if (!topic)   { alert('Vui lòng nhập chủ đề nghiên cứu'); return; }
 
     localStorage.setItem('dim0_token', token);

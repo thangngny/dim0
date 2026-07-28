@@ -1,6 +1,6 @@
 window.__APP_CONFIG__ = {
-  apiBase: "https://ringtone-metal-stored-magazines.trycloudflare.com",
+  apiBase: "http://localhost:8899",
   billingEnabled: "false",
-  miniAppOrigin: "",
-  hostOrigin: "https://reload-these-jesse-spice.trycloudflare.com",
+  miniAppOrigin: "http://localhost:5176",
+  hostOrigin: "http://localhost:5173",
 }

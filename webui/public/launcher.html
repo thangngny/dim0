@@ -120,12 +120,63 @@
     .log-box {
       display: none; margin-top: 1rem; background: var(--bg);
       border: 1px solid var(--border); border-radius: 0.625rem;
-      padding: 1rem; max-height: 220px; overflow-y: auto;
+      padding: 1rem; max-height: 180px; overflow-y: auto;
       font-size: 0.77rem; line-height: 1.7; color: var(--muted);
       font-family: 'Consolas', monospace;
     }
     .log-box.visible { display: block; }
     .log-line.hi { color: #a78bfa; }
+
+    /* Live sub-agent cards */
+    .agent-panel {
+      display: none; margin-top: 1rem; border: 1px solid var(--border);
+      border-radius: 0.875rem; background: var(--bg); overflow: hidden;
+    }
+    .agent-panel.visible { display: block; }
+    .agent-panel-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--border);
+      font-size: 0.78rem; font-weight: 600; color: #c4b5fd;
+      background: rgba(124,58,237,0.08);
+    }
+    .agent-panel-head .meta { font-weight: 400; color: var(--muted); font-size: 0.72rem; }
+    .agent-list { max-height: 280px; overflow-y: auto; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.45rem; }
+    .agent-card {
+      border: 1px solid var(--border); border-radius: 0.65rem;
+      padding: 0.55rem 0.7rem; background: var(--surface);
+    }
+    .agent-card.running { border-color: rgba(37,99,235,0.45); box-shadow: 0 0 0 1px rgba(37,99,235,0.08); }
+    .agent-card.done { border-color: rgba(34,197,94,0.35); }
+    .agent-card.failed { border-color: rgba(239,68,68,0.4); }
+    .agent-card .row1 { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.2rem; }
+    .agent-card .role-pill {
+      font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 0.12rem 0.4rem; border-radius: 999px;
+      background: rgba(124,58,237,0.15); color: #c4b5fd; font-weight: 600;
+    }
+    .agent-card .title { font-size: 0.82rem; font-weight: 600; color: var(--text); flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .agent-card .st {
+      font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+    }
+    .agent-card .st.running { color: #60a5fa; }
+    .agent-card .st.done { color: #4ade80; }
+    .agent-card .st.failed { color: #f87171; }
+    .agent-card .detail { font-size: 0.74rem; color: var(--muted); line-height: 1.35; }
+    .agent-card .query {
+      margin-top: 0.25rem; font-size: 0.72rem; color: #93c5fd;
+      font-family: ui-monospace, monospace;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .agent-timeline {
+      border-top: 1px solid var(--border); padding: 0.45rem 0.7rem 0.6rem;
+      max-height: 120px; overflow-y: auto;
+    }
+    .agent-timeline .tl {
+      font-size: 0.7rem; color: var(--muted); line-height: 1.45;
+      padding: 0.12rem 0; border-bottom: 1px dashed rgba(255,255,255,0.04);
+    }
+    .agent-timeline .tl b { color: #a78bfa; font-weight: 600; }
 
     .result-box {
       display: none; margin-top: 1rem; padding: 1.2rem;
@@ -267,8 +318,19 @@
     <!-- phase: topic -->
     <div id="clarifyTopicPhase">
       <div class="field">
-        <label>Chủ đề nghiên cứu <span style="color:#ef4444">*</span></label>
-        <textarea id="topic" placeholder="Ví dụ: chiến dịch storytelling các thương hiệu bảo hiểm&#10;&#10;Hệ thống sẽ hỏi làm rõ trước khi explore sâu"></textarea>
+        <label>Chủ đề / brief nghiên cứu <span style="color:#ef4444">*</span></label>
+        <textarea id="topic" placeholder="Dán brief hoặc mô tả đề bài…&#10;&#10;Nếu brief đã đủ mục tiêu/kênh/KPI, bước sau sẽ hỏi chủ yếu về ngành hàng + ref."></textarea>
+      </div>
+      <div class="field">
+        <label>Link reference (tuỳ chọn)</label>
+        <textarea id="refLinks" style="min-height:72px" placeholder="Mỗi dòng 1 URL (campaign, case study, moodboard, Behance, YouTube…)&#10;https://…"></textarea>
+        <p class="hint">Agent ưu tiên dùng các link này làm Source (không bịa URL).</p>
+      </div>
+      <div class="field">
+        <label>Dán nội dung file / text bổ sung (tuỳ chọn)</label>
+        <textarea id="refNotes" style="min-height:72px" placeholder="Dán text từ brief PDF/Word, note nội bộ…"></textarea>
+        <p class="hint">Chưa upload binary; paste text hoặc dùng link ở trên. Có thể chọn file .txt/.md:</p>
+        <input id="refFile" type="file" accept=".txt,.md,.csv,.json,text/*" style="margin-top:0.4rem;font-size:0.8rem;color:var(--muted)" />
       </div>
       <div class="field">
         <label>Ngôn ngữ</label>
@@ -278,8 +340,8 @@
         </select>
       </div>
       <div class="hint" style="margin-bottom:0.75rem;line-height:1.5">
-        <strong>Clarify trước, research sau.</strong> Hệ thống hỏi 5–7 câu để làm rõ bài toán,
-        chốt IN/OUT scope, rồi mới explore theo brief đã khóa.
+        <strong>Clarify → 3 trục ref:</strong> Storyline · Tone&amp;Mood · Thủ pháp.
+        Câu hỏi ưu tiên đặc trưng ngành hàng (brief đầy thì không hỏi lại generic).
       </div>
       <button class="btn" id="clarifyBtn" onclick="doClarifyQuestions()">❓ Làm rõ bài toán</button>
       <button class="btn secondary" id="skipClarifyBtn" onclick="skipClarifyExplore()">Bỏ qua clarify → Explore thẳng</button>
@@ -311,7 +373,16 @@
       </div>
       <button class="btn" id="generateBtn" onclick="doGenerate()">✦ Explore theo scope này</button>
       <button class="btn secondary" onclick="backToQuestions()">← Sửa câu trả lời</button>
+      <button type="button" class="btn secondary" id="stopExploreBtn" style="display:none">⏹ Dừng</button>
       <div id="generateStatus" class="status-bar"></div>
+      <div id="agentPanel" class="agent-panel">
+        <div class="agent-panel-head">
+          <span>🤖 Sub-agents đang chạy</span>
+          <span class="meta" id="agentPanelMeta">live</span>
+        </div>
+        <div class="agent-list" id="agentList"></div>
+        <div class="agent-timeline" id="agentTimeline"></div>
+      </div>
       <div id="logBox" class="log-box"></div>
     </div>
   </div>
@@ -374,6 +445,11 @@
           <strong>Critique</strong>
           <span>Tìm gap, contradiction, evidence yếu</span>
         </label>
+        <label class="mode-opt" data-mode="improve">
+          <input type="radio" name="mode" value="improve" />
+          <strong>Improve</strong>
+          <span>Cải thiện 1 node (sửa văn phong/rõ hơn) — giữ nguyên cấu trúc</span>
+        </label>
         <label class="mode-opt" data-mode="explore">
           <input type="radio" name="mode" value="explore" />
           <strong>Explore+</strong>
@@ -399,7 +475,16 @@
     <div class="board-id" id="boardIdLabel2"></div>
     <button class="btn" id="refineBtn" onclick="doRefine()">✦ Chạy Refine</button>
     <button class="btn secondary" onclick="goStep(3)">← Về kết quả</button>
+    <button type="button" class="btn secondary" id="stopRefineBtn" style="display:none">⏹ Dừng</button>
     <div id="refineStatus" class="status-bar"></div>
+    <div id="refineAgentPanel" class="agent-panel">
+      <div class="agent-panel-head">
+        <span>🤖 Sub-agents (refine)</span>
+        <span class="meta" id="refineAgentPanelMeta">live</span>
+      </div>
+      <div class="agent-list" id="refineAgentList"></div>
+      <div class="agent-timeline" id="refineAgentTimeline"></div>
+    </div>
     <div id="refineLogBox" class="log-box"></div>
   </div>
 
@@ -411,13 +496,15 @@
 </footer>
 
 <script>
-  const BACKEND  = "https://ringtone-metal-stored-magazines.trycloudflare.com"
-  const FRONTEND = "https://reload-these-jesse-spice.trycloudflare.com"
+  const BACKEND  = "http://localhost:8899"
+  const FRONTEND = "http://localhost:5173"
   const TOKEN    = "b82baa54d8ff5b6e242d2894dbe83bc812e5a3bbae07a348aacdd7ba29200e6d"
   const STORAGE_KEY = "dim0_research_launcher_v1"
 
   let jwt = ""
   let boardId = ""
+  /** AbortController for the in-flight research SSE (Stop button). */
+  let currentAbort = null
   let lastLanguage = "vi"
   let lastTopic = ""
   let lastEmail = ""
@@ -443,28 +530,62 @@
     if (show) show.style.display = "block"
   }
 
+  const AXIS_LABEL = {
+    storyline: { label: "🎬 Storyline / Cách kể", icon: "🎬" },
+    tone: { label: "🎨 Tone & Mood", icon: "🎨" },
+    craft: { label: "🛠️ Thủ pháp", icon: "🛠️" },
+    industry: { label: "🏭 Ngành hàng", icon: "🏭" },
+    scope: { label: "🎯 Phạm vi", icon: "🎯" },
+    other: { label: "📌 Khác", icon: "📌" },
+  }
+  const AXIS_ORDER = ["industry", "storyline", "tone", "craft", "scope", "other"]
+
   function renderQuestions(questions) {
-    /** Render clarify Q&A form cards. */
+    /** Render clarify Q&A cards grouped by axis (section headers per group). */
     const root = document.getElementById("questionsList")
     root.innerHTML = ""
     lastClarifyQuestions = questions || []
-    lastClarifyQuestions.forEach((q, idx) => {
-      const card = document.createElement("div")
-      card.className = "q-card"
-      const opts = (q.options || [])
-        .map(
-          (o) =>
-            `<button type="button" class="q-opt" data-qid="${q.id}" data-opt="${String(o).replace(/"/g, "&quot;")}">${o}</button>`
-        )
-        .join("")
-      card.innerHTML = `
-        <div class="q-title">${idx + 1}. ${q.question || ""}</div>
-        ${q.why ? `<div class="q-why">${q.why}</div>` : ""}
-        ${opts ? `<div class="q-opts">${opts}</div>` : ""}
-        <textarea id="ans_${q.id}" placeholder="${q.hint || "Câu trả lời của bạn…"}"></textarea>
-      `
-      root.appendChild(card)
+    if (!lastClarifyQuestions.length) return
+
+    const groups = {}
+    lastClarifyQuestions.forEach((q) => {
+      const ax = q.axis && AXIS_LABEL[q.axis] ? q.axis : "other"
+      ;(groups[ax] = groups[ax] || []).push(q)
     })
+
+    let counter = 0
+    AXIS_ORDER.forEach((ax) => {
+      const list = groups[ax]
+      if (!list || !list.length) return
+      const meta = AXIS_LABEL[ax]
+      const header = document.createElement("div")
+      header.className = "q-axis-header"
+      header.style.cssText =
+        "margin:0.75rem 0 0.35rem;font-size:0.8rem;font-weight:600;" +
+        "text-transform:uppercase;letter-spacing:0.04em;color:var(--muted,#888);"
+      header.textContent = meta.label
+      root.appendChild(header)
+
+      list.forEach((q) => {
+        counter += 1
+        const card = document.createElement("div")
+        card.className = "q-card"
+        const opts = (q.options || [])
+          .map(
+            (o) =>
+              `<button type="button" class="q-opt" data-qid="${q.id}" data-opt="${String(o).replace(/"/g, "&quot;")}">${o}</button>`
+          )
+          .join("")
+        card.innerHTML = `
+          <div class="q-title"><span class="q-axis-chip" style="font-size:0.65rem;padding:0 0.4rem;border-radius:999px;background:var(--accent-soft,rgba(99,102,241,.15));color:var(--accent,#6366f1);margin-right:0.4rem;">${meta.icon} ${ax}</span>${counter}. ${q.question || ""}</div>
+          ${q.why ? `<div class="q-why">${q.why}</div>` : ""}
+          ${opts ? `<div class="q-opts">${opts}</div>` : ""}
+          <textarea id="ans_${q.id}" placeholder="${q.hint || "Câu trả lời của bạn…"}"></textarea>
+        `
+        root.appendChild(card)
+      })
+    })
+
     root.querySelectorAll(".q-opt").forEach((btn) => {
       btn.addEventListener("click", () => {
         const ta = document.getElementById("ans_" + btn.dataset.qid)
@@ -481,18 +602,58 @@
     }))
   }
 
+  /**
+   * Compose topic + optional reference links + pasted notes for clarify/explore.
+   */
+  function composeTopicPayload() {
+    const topic = document.getElementById("topic").value.trim()
+    const links = (document.getElementById("refLinks")?.value || "").trim()
+    const notes = (document.getElementById("refNotes")?.value || "").trim()
+    const parts = [topic]
+    if (links) {
+      parts.push(
+        "\nREFERENCES (user-provided URLs — prefer as Source, do not invent):\n" + links,
+      )
+    }
+    if (notes) {
+      parts.push("\nBRIEF_NOTES (pasted from file/user notes):\n" + notes.slice(0, 6000))
+    }
+    return parts.filter(Boolean).join("\n").trim()
+  }
+
+  // Client-side text file → refNotes (no binary upload server).
+  document.getElementById("refFile")?.addEventListener("change", (ev) => {
+    const f = ev.target.files && ev.target.files[0]
+    if (!f) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const text = String(reader.result || "")
+      const box = document.getElementById("refNotes")
+      if (box) {
+        box.value = (box.value ? box.value + "\n\n" : "") + text.slice(0, 12000)
+      }
+    }
+    reader.readAsText(f)
+  })
+
   async function doClarifyQuestions() {
     const topic = document.getElementById("topic").value.trim()
     lastLanguage = document.getElementById("language").value
     lastTopic = topic
     if (!topic) {
-      alert("Vui lòng nhập chủ đề nghiên cứu")
+      alert("Vui lòng nhập chủ đề / brief nghiên cứu")
       return
     }
     const btn = document.getElementById("clarifyBtn")
     btn.disabled = true
-    setStatus("clarifyStatus", "running", "Đang soạn câu hỏi làm rõ (Ollama)...")
+    setStatus("clarifyStatus", "running", "Đang soạn câu hỏi làm rõ (Claude)...")
     try {
+      const composed = composeTopicPayload()
+      const selMode = document.querySelector('input[name="mode"]:checked')?.value || "explore"
+      const focusRaw = (document.getElementById("focusIds")?.value || "").trim()
+      const focusNodeIds = focusRaw
+        ? focusRaw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
+        : []
       const r = await fetch(`${BACKEND}/integration/research/clarify`, {
         method: "POST",
         headers: {
@@ -500,9 +661,12 @@
           "X-Integration-Token": TOKEN,
         },
         body: JSON.stringify({
-          topic,
+          topic: composed.slice(0, 2000),
           language: lastLanguage,
           stage: "questions",
+          board_id: boardId || null,
+          mode: selMode,
+          focus_node_ids: focusNodeIds,
         }),
       })
       if (!r.ok) {
@@ -510,11 +674,28 @@
         throw new Error(typeof e.detail === "string" ? e.detail : JSON.stringify(e.detail || r.statusText))
       }
       const d = await r.json()
+      const clear = d.clear === true || d.data?.clear === true
+      const rationale = d.rationale || d.data?.rationale || ""
       const questions = d.questions || d.data?.questions || []
-      if (!questions.length) throw new Error("Không nhận được câu hỏi")
-      renderQuestions(questions)
-      setStatus("clarifyStatus", "done", `✅ ${questions.length} câu hỏi (model: ${d.model || "—"})`)
-      showClarifyPhase("questions")
+      const model = d.model || d.data?.model || "—"
+      if (clear) {
+        // Agent says the brief is already clear — skip questions, offer Explore.
+        document.getElementById("questionsList").innerHTML = `
+          <div class="q-card" style="border-color: var(--accent, #6366f1);">
+            <div class="q-title">✅ Agent thấy đề bài đã rõ</div>
+            ${rationale ? `<div class="q-why">${rationale}</div>` : ""}
+            <div class="q-why">Bạn có thể chạy Explore luôn, hoặc nhấn “Bỏ qua clarify” để tự chỉnh.</div>
+          </div>
+        `
+        lastClarifyQuestions = []
+        setStatus("clarifyStatus", "done", `✅ Đã rõ (model: ${model})`)
+        showClarifyPhase("questions")
+      } else {
+        if (!questions.length) throw new Error("Không nhận được câu hỏi")
+        renderQuestions(questions)
+        setStatus("clarifyStatus", "done", `✅ ${questions.length} câu hỏi (model: ${model})`)
+        showClarifyPhase("questions")
+      }
       saveState({ lastTopic: topic, lastLanguage, lastStep: 2, jwt, boardId })
     } catch (e) {
       setStatus("clarifyStatus", "error", "❌ " + e.message)
@@ -536,6 +717,7 @@
     btn.disabled = true
     setStatus("scopeStatus", "running", "Đang chốt phạm vi nghiên cứu...")
     try {
+      const composed = composeTopicPayload()
       const r = await fetch(`${BACKEND}/integration/research/clarify`, {
         method: "POST",
         headers: {
@@ -543,7 +725,7 @@
           "X-Integration-Token": TOKEN,
         },
         body: JSON.stringify({
-          topic,
+          topic: composed.slice(0, 2000),
           language: lastLanguage,
           stage: "scope",
           answers,
@@ -585,7 +767,7 @@
   }
 
   async function skipClarifyExplore() {
-    /** Explore without clarify — uses raw topic as instruction. */
+    /** Explore without clarify — uses topic + refs as instruction. */
     lastScopeBrief = ""
     const topic = document.getElementById("topic").value.trim()
     if (!topic) {
@@ -594,13 +776,22 @@
     }
     lastTopic = topic
     lastLanguage = document.getElementById("language").value
-    // synthetic brief so doGenerate still works from topic phase
-    document.getElementById("scopeBrief").value = topic
+    const composed = composeTopicPayload()
+    // synthetic brief with default 3 creative axes
+    const synthetic =
+      "SCOPE LOCKED (skip clarify)\n" +
+      composed +
+      "\n\nAXES:\n" +
+      "1) Ref Storyline\n2) Ref Tone & Mood\n3) Ref Thủ pháp\n" +
+      "IN_SCOPE: bám topic + references.\n" +
+      "OUT_OF_SCOPE: lan man ngoài ngành / ngoài brief.\n" +
+      "SUCCESS: graph gọn 3 cụm + decision + summary."
+    document.getElementById("scopeBrief").value = synthetic
     showClarifyPhase("scope")
     document.getElementById("scopeProblem").textContent =
       "Explore thẳng (không clarify): " + topic
     document.getElementById("scopeMeta").textContent =
-      "Bạn đã bỏ qua bước làm rõ. Research có thể rộng hơn ý định."
+      "Trục mặc định: Storyline · Tone&Mood · Thủ pháp. Có thể edit brief trước khi chạy."
     await doGenerate()
   }
 
@@ -954,11 +1145,233 @@
     }
   }
 
-  async function readSSE(response, { statusId, logBoxId, onDone, onError }) {
+  /** Live sub-agent UI state for one run (launcher timeline + cards). */
+  function createAgentLiveUI({ panelId, listId, timelineId, metaId }) {
+    const agents = new Map()
+    const timeline = []
+    const seen = new Set()
+    const roleIcon = {
+      lead: "🧠",
+      workstream: "🔍",
+      collector: "🌐",
+      critique: "⚠️",
+      writer: "✍️",
+      worker: "⚙️",
+    }
+
+    let startedAt = 0
+    let lastEventAt = 0
+    let beatTimer = null
+
+    function fmtAgo(ms) {
+      const s = Math.max(0, Math.round(ms / 1000))
+      if (s < 60) return `${s}s`
+      return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`
+    }
+
+    /** Tick the panel meta every second so a silent Claude pass still looks alive. */
+    function startHeartbeat() {
+      startedAt = Date.now()
+      lastEventAt = Date.now()
+      stopHeartbeat()
+      ensureVisible()
+      const meta = document.getElementById(metaId)
+      beatTimer = setInterval(() => {
+        if (!meta) return
+        const elapsed = Date.now() - startedAt
+        const since = Date.now() - lastEventAt
+        const thinking = since > 20000 ? " · 🤔 đang suy nghĩ…" : ""
+        meta.textContent = `running · ${fmtAgo(elapsed)} · event cuối ${fmtAgo(since)} trước${thinking}`
+      }, 1000)
+    }
+
+    function stopHeartbeat() {
+      if (beatTimer) { clearInterval(beatTimer); beatTimer = null }
+    }
+
+    function ensureVisible() {
+      const p = document.getElementById(panelId)
+      if (p) p.classList.add("visible")
+    }
+
+    function reset() {
+      agents.clear()
+      timeline.length = 0
+      seen.clear()
+      stopHeartbeat()
+      startedAt = 0
+      lastEventAt = 0
+      const list = document.getElementById(listId)
+      const tl = document.getElementById(timelineId)
+      if (list) list.innerHTML = ""
+      if (tl) tl.innerHTML = ""
+      const meta = document.getElementById(metaId)
+      if (meta) meta.textContent = "live"
+      const p = document.getElementById(panelId)
+      if (p) p.classList.remove("visible")
+    }
+
+    function applyEvent(ev) {
+      if (!ev || typeof ev !== "object") return
+      const id = ev.id || `${ev.agent_id || "x"}-${ev.event_type}-${ev.ts || ""}-${ev.label || ""}`
+      if (seen.has(id)) return
+      seen.add(id)
+      lastEventAt = Date.now()
+      ensureVisible()
+
+      const agentId = ev.agent_id || "lead"
+      const role = ev.role || "worker"
+      let status = "running"
+      if (ev.event_type === "agent_done" || ev.event_type === "completed") status = "done"
+      if (["failed", "cancelled", "agent_failed"].includes(ev.event_type)) status = "failed"
+
+      const prev = agents.get(agentId) || {}
+      agents.set(agentId, {
+        agent_id: agentId,
+        role,
+        label: ev.label || prev.label || agentId,
+        status: status === "running" && prev.status === "done" ? "done" : status,
+        detail: ev.detail || prev.detail || "",
+        query: ev.query || prev.query || "",
+      })
+
+      timeline.unshift({
+        type: ev.event_type || "progress",
+        label: ev.label || ev.detail || "",
+        agent: agentId,
+        query: ev.query || "",
+      })
+      if (timeline.length > 40) timeline.length = 40
+      render()
+    }
+
+    function applySnapshot(snap) {
+      if (!snap) return
+      lastEventAt = Date.now()
+      ensureVisible()
+      if (Array.isArray(snap.agents)) {
+        for (const a of snap.agents) {
+          if (!a || !a.agent_id) continue
+          agents.set(a.agent_id, {
+            agent_id: a.agent_id,
+            role: a.role || "worker",
+            label: a.label || a.agent_id,
+            status: a.status || "running",
+            detail: a.detail || "",
+            query: a.query || "",
+          })
+        }
+      }
+      if (Array.isArray(snap.events)) {
+        for (const e of snap.events) applyEvent(e)
+      }
+      const meta = document.getElementById(metaId)
+      if (meta) {
+        const n = agents.size
+        const run = [...agents.values()].filter((a) => a.status === "running").length
+        meta.textContent = snap.completed
+          ? `xong · ${n} agent`
+          : `${run} running · ${n} agent`
+      }
+      render()
+    }
+
+    function markAllDone() {
+      stopHeartbeat()
+      for (const [k, a] of agents) {
+        if (a.status === "running") agents.set(k, { ...a, status: "done" })
+      }
+      const meta = document.getElementById(metaId)
+      if (meta) meta.textContent = "hoàn tất"
+      render()
+    }
+
+    function render() {
+      const list = document.getElementById(listId)
+      const tl = document.getElementById(timelineId)
+      if (!list) return
+      const cards = [...agents.values()].sort((a, b) => {
+        const rank = (s) => (s === "running" ? 0 : s === "failed" ? 1 : 2)
+        return rank(a.status) - rank(b.status)
+      })
+      list.innerHTML = cards
+        .map((a) => {
+          const icon = roleIcon[a.role] || roleIcon.worker
+          const q = a.query
+            ? `<div class="query" title="${esc(a.query)}">🔎 ${esc(a.query)}</div>`
+            : ""
+          const d = a.detail ? `<div class="detail">${esc(a.detail)}</div>` : ""
+          return `<div class="agent-card ${esc(a.status)}">
+            <div class="row1">
+              <span class="role-pill">${icon} ${esc(a.role)}</span>
+              <span class="title" title="${esc(a.label)}">${esc(a.label)}</span>
+              <span class="st ${esc(a.status)}">${esc(a.status)}</span>
+            </div>
+            ${d}${q}
+          </div>`
+        })
+        .join("")
+      if (tl) {
+        tl.innerHTML = timeline
+          .slice(0, 18)
+          .map(
+            (t) =>
+              `<div class="tl"><b>${esc(t.type)}</b> · ${esc(t.agent)}${
+                t.label ? " — " + esc(t.label) : ""
+              }${t.query ? ` <span style="color:#93c5fd">«${esc(t.query)}»</span>` : ""}</div>`,
+          )
+          .join("")
+      }
+    }
+
+    function esc(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+    }
+
+    return { reset, applyEvent, applySnapshot, markAllDone, ensureVisible, startHeartbeat, stopHeartbeat }
+  }
+
+  const exploreAgentsUI = createAgentLiveUI({
+    panelId: "agentPanel",
+    listId: "agentList",
+    timelineId: "agentTimeline",
+    metaId: "agentPanelMeta",
+  })
+  const refineAgentsUI = createAgentLiveUI({
+    panelId: "refineAgentPanel",
+    listId: "refineAgentList",
+    timelineId: "refineAgentTimeline",
+    metaId: "refineAgentPanelMeta",
+  })
+
+  /** Wire a Stop button: aborts the in-flight SSE and tells the user the
+   *  server-side agent may still be running (honest — we can't kill it). */
+  function bindStop(stopBtnId, agentsUI, statusId, logBoxId) {
+    const b = document.getElementById(stopBtnId)
+    if (!b) return
+    b.addEventListener("click", () => {
+      if (currentAbort) { try { currentAbort.abort() } catch {} currentAbort = null }
+      if (agentsUI) agentsUI.stopHeartbeat()
+      setStatus(statusId, "error", "⏹ Đã dừng — agent phía server có thể vẫn đang chạy; node đã ghi vẫn còn trên board.")
+      logTo(logBoxId, "⏹ Đã dừng bởi user (agent phía server có thể vẫn chạy).", true)
+      b.style.display = "none"
+    })
+  }
+  bindStop("stopExploreBtn", exploreAgentsUI, "generateStatus", "logBox")
+  bindStop("stopRefineBtn", refineAgentsUI, "refineStatus", "refineLogBox")
+
+  async function readSSE(response, { statusId, logBoxId, onDone, onError, agentsUI }) {
     const reader = response.body.getReader()
     const dec = new TextDecoder()
     let buf = ""
     let finished = false
+    if (agentsUI) agentsUI.reset()
+    if (agentsUI) agentsUI.startHeartbeat()
+    try {
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -972,23 +1385,44 @@
           const ev = JSON.parse(data)
           if (ev.status === "progress" && ev.text) {
             logTo(logBoxId, ev.text, ev.text.startsWith("**") || ev.text.startsWith("✓") || ev.text.startsWith("BOARD_"))
+          } else if (ev.status === "agent" && ev.event && agentsUI) {
+            agentsUI.applyEvent(ev.event)
+            if (ev.event.label || ev.event.detail) {
+              logTo(
+                logBoxId,
+                `[${ev.event.agent_id || ev.event.role || "agent"}] ${ev.event.label || ""} ${ev.event.query ? "· " + ev.event.query : ""}`.trim(),
+                true,
+              )
+            }
+          } else if (ev.status === "agents_snapshot" && ev.snapshot && agentsUI) {
+            agentsUI.applySnapshot(ev.snapshot)
           } else if (ev.status === "running" || ev.status === "starting") {
             setStatus(statusId, "running", ev.message || `mode=${ev.mode || ""} effort=${ev.effort || ""}`)
+            if (agentsUI) agentsUI.ensureVisible()
           } else if (ev.status === "done") {
             finished = true
             const extra = ev.early ? " (graph sẵn sàng)" : ""
             const n = ev.nodes != null ? ` · ${ev.nodes} node` : ""
             setStatus(statusId, "done", `✅ Hoàn tất!${extra}${n}`)
+            if (agentsUI) agentsUI.markAllDone()
             if (onDone) onDone(ev)
           } else if (ev.status === "error") {
             finished = true
             setStatus(statusId, "error", "❌ " + (ev.detail || "Lỗi"))
+            logTo(logBoxId, "❌ " + (ev.detail || "Lỗi"), true)
+            if (agentsUI) agentsUI.stopHeartbeat()
             if (onError) onError(ev)
           }
         } catch {
           // ignore partial JSON
         }
       }
+    }
+    } catch (e) {
+      // AbortError / network drop — heartbeat + UI handled by caller/stop button.
+      throw e
+    } finally {
+      if (agentsUI) agentsUI.stopHeartbeat()
     }
     return finished
   }
@@ -1066,14 +1500,24 @@
       return
     }
 
-    // Prefix so explore prompt treats instruction as locked scope.
+    // Prefix so explore prompt treats instruction as locked scope + user refs.
+    const refs = composeTopicPayload()
     const instruction =
       "LOCKED RESEARCH SCOPE (obey strictly — do not expand beyond this):\n\n" +
       scopeBrief +
-      "\n\nORIGINAL_TOPIC: " +
-      (lastTopic || "")
+      "\n\nORIGINAL_TOPIC_AND_REFS:\n" +
+      (refs || lastTopic || "") +
+      "\n\nCREATIVE REF AXES (default if not overridden above):\n" +
+      "1) Ref Storyline — cách kể, tứ truyện, cốt truyện, arc\n" +
+      "2) Ref Tone & Mood — màu sắc, tạo hình, nhịp điệu, vibe\n" +
+      "3) Ref Thủ pháp — đồ họa, 3D, motion, thủ pháp thể hiện\n" +
+      "GRAPH: gọn — 1 Question + 3 Workstream + Sources/Findings bám axis; không dump bừa."
 
     setStatus("generateStatus", "running", "Explore theo scope đã chốt (~có thể vài phút)...")
+    const stopBtn = document.getElementById("stopExploreBtn")
+    if (stopBtn) stopBtn.style.display = "inline-block"
+    const ctrl = new AbortController()
+    currentAbort = ctrl
     try {
       const r = await fetch(`${BACKEND}/integration/boards/${boardId}/research`, {
         method: "POST",
@@ -1081,6 +1525,7 @@
           "Content-Type": "application/json",
           "X-Integration-Token": TOKEN,
         },
+        signal: ctrl.signal,
         body: JSON.stringify({
           mode: "explore",
           instruction: instruction.slice(0, 4000),
@@ -1097,6 +1542,7 @@
       await readSSE(r, {
         statusId: "generateStatus",
         logBoxId: "logBox",
+        agentsUI: exploreAgentsUI,
         onDone: () => {
           document.getElementById("resultMsg").textContent =
             "Explore xong theo scope đã chốt. Board đã lưu — Refine / chat tiếp trên Dim0."
@@ -1106,9 +1552,15 @@
         },
       })
     } catch (e) {
-      setStatus("generateStatus", "error", "❌ " + e.message)
+      if (e.name === "AbortError") {
+        // Stop button already set the status — just stay quiet.
+      } else {
+        setStatus("generateStatus", "error", "❌ " + e.message)
+      }
     } finally {
       btn.disabled = false
+      currentAbort = null
+      if (stopBtn) stopBtn.style.display = "none"
     }
   }
 
@@ -1135,11 +1587,24 @@
       ? focusRaw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean)
       : []
 
+    const focusN = focus_node_ids.length
+    const ok = window.confirm(
+      `Chạy ${mode.toUpperCase()} — sẽ GHI ĐÈN (delta) lên board hiện tại.\n\n` +
+      `Instruction: ${instruction.slice(0, 200)}${instruction.length > 200 ? "…" : ""}\n` +
+      `Focus: ${focusN ? focusN + " node" : "(toàn board)"}\n\n` +
+      `Nhấn OK để chạy, Cancel để hủy.`
+    )
+    if (!ok) return
+
     const btn = document.getElementById("refineBtn")
     btn.disabled = true
     document.getElementById("refineLogBox").innerHTML = ""
     document.getElementById("refineLogBox").classList.remove("visible")
     setStatus("refineStatus", "running", `Đang ${mode}...`)
+    const stopBtn = document.getElementById("stopRefineBtn")
+    if (stopBtn) stopBtn.style.display = "inline-block"
+    const ctrl = new AbortController()
+    currentAbort = ctrl
 
     const effort =
       mode === "explore" || mode === "reframe"
@@ -1155,6 +1620,7 @@
           "Content-Type": "application/json",
           "X-Integration-Token": TOKEN,
         },
+        signal: ctrl.signal,
         body: JSON.stringify({
           mode,
           instruction,
@@ -1172,6 +1638,7 @@
       await readSSE(r, {
         statusId: "refineStatus",
         logBoxId: "refineLogBox",
+        agentsUI: refineAgentsUI,
         onDone: () => {
           document.getElementById("resultMsg").textContent =
             `Refine (${mode}) xong — reload canvas. Board vẫn được nhớ cho lần mở sau.`
@@ -1180,9 +1647,15 @@
         },
       })
     } catch (e) {
-      setStatus("refineStatus", "error", "❌ " + e.message)
+      if (e.name === "AbortError") {
+        // Stop button already set the status — just stay quiet.
+      } else {
+        setStatus("refineStatus", "error", "❌ " + e.message)
+      }
     } finally {
       btn.disabled = false
+      currentAbort = null
+      if (stopBtn) stopBtn.style.display = "none"
     }
   }
 
