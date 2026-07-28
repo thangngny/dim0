@@ -1,4 +1,4 @@
-import { CursorClickIcon } from "@phosphor-icons/react"
+import { CursorClickIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
 import { useCanvasStore } from "@canvas-harness/react"
 
 import {
@@ -27,6 +27,8 @@ import { useAppStore } from "@/store"
 import { useNodeTypeCount } from "../canvas/use-node-type-count"
 import { useBoardAppStore } from "../store/board-app-store"
 import { DocumentUploadDialog } from "./document-upload-dialog"
+import { FindNodeDialog } from "./find-node-dialog"
+import { CopyToBoardDialog } from "./copy-to-board-dialog"
 import { IconSearchDialog } from "./icon-search-dialog"
 import { ImageSearchDialog } from "./image-search-dialog"
 
@@ -67,6 +69,11 @@ const MoreMenuItems = () => {
 
   return (
     <>
+      <DropdownMenuItem onSelect={() => setChromeDialog("find-node")} className="gap-2 text-sm">
+        <MagnifyingGlassIcon className="size-4 shrink-0" />
+        <span>Find on board</span>
+        <DropdownMenuShortcut>⌘F</DropdownMenuShortcut>
+      </DropdownMenuItem>
       <DropdownMenuItem onSelect={() => setChromeDialog("icon-search")} className="gap-2 text-sm">
         <PuzzlePieceIcon className="size-4 shrink-0" />
         <span>Icons</span>
@@ -116,6 +123,8 @@ export function HarnessToolbarMore() {
   const openImageSearch = chromeDialog === "image-search"
   const openIconSearch = chromeDialog === "icon-search"
   const openDocumentUpload = chromeDialog === "document-upload"
+  const openFindNode = chromeDialog === "find-node"
+  const openCopyToBoard = chromeDialog === "copy-to-board"
 
   return (
     <>
@@ -155,6 +164,14 @@ export function HarnessToolbarMore() {
       <DocumentUploadDialog
         open={openDocumentUpload}
         onOpenChange={(open) => setChromeDialog(open ? "document-upload" : null)}
+      />
+      <FindNodeDialog
+        open={openFindNode}
+        onOpenChange={(open) => setChromeDialog(open ? "find-node" : null)}
+      />
+      <CopyToBoardDialog
+        open={openCopyToBoard}
+        onOpenChange={(open) => setChromeDialog(open ? "copy-to-board" : null)}
       />
     </>
   )

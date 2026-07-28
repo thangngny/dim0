@@ -80,6 +80,15 @@ export const useBoardKeyboard = (store: CanvasStore): void => {
         store.redo()
         return
       }
+      // ⌘/Ctrl+F → open the "Find on board" dialog. Handled before the
+      // meta early-return below so the browser's native find doesn't
+      // intercept it. Skipped while typing (guarded at the top).
+      if (meta && (e.key === "f" || e.key === "F")) {
+        e.preventDefault()
+        const app = useBoardAppStore.getState()
+        app.setChromeDialog("find-node")
+        return
+      }
 
       if (meta || e.altKey || e.shiftKey) return
 

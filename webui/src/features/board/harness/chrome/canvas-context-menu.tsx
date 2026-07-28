@@ -10,7 +10,9 @@ import { toast } from "sonner"
 import type { CanvasStore, NodeId, Renderer } from "@canvas-harness/core"
 import { exportSelection, exportSelectionSvg } from "@canvas-harness/core"
 import {
+  ArrowSquareUpRight as ArrowSquareUpRightIcon,
   Clipboard as ClipboardIcon,
+  SquaresFour as SquaresFourIcon,
   StackMinus as StackMinusIcon,
   StackPlus as StackPlusIcon,
 } from "@phosphor-icons/react"
@@ -29,6 +31,8 @@ import { buildContextTextFromNodes } from "@/features/board/utils/context-text"
 import { useAiSparkActions } from "@/features/board/hooks/use-ai-spark-actions"
 import { useBoardAppStore } from "../store/board-app-store"
 import { nodeToNote } from "../convert/node-to-note"
+import { alignNodes, minNodesFor, type AlignMode } from "../canvas/align-nodes"
+import { groupAndCollapse } from "../canvas/cluster-overlay"
 import type { NoteNode } from "@/features/board/types/flow"
 
 
@@ -104,6 +108,7 @@ const buildSelectedContextText = (
  */
 export function CanvasContextMenu({ wrapRef, store, rendererRef }: CanvasContextMenuProps) {
   const boardId = useBoardAppStore((s) => s.boardId)
+  const setChromeDialog = useBoardAppStore((s) => s.setChromeDialog)
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null)
   const [aiOpen, setAiOpen] = useState(false)
   const [translateOpen, setTranslateOpen] = useState(false)
@@ -186,6 +191,44 @@ export function CanvasContextMenu({ wrapRef, store, rendererRef }: CanvasContext
     store.bringToFront(selection())
     closeMenu()
   }, [store, selection, closeMenu])
+
+  // ---- Align / distribute ----------------------------------------------
+  // Snap the selected nodes to a common edge/center, or space them evenly.
+  // Only the moved axis is patched so a horizontal align preserves each
+  // node's vertical position. Requires ≥2 nodes (≥3 for distribute).
+  const handleAlign = useCallback(
+    (mode: AlignMode) => {
+      const ids = selection()
+      const nodes = ids
+        .map((id) => store.getNode(id as NodeId))
+        .filter((n): n is NonNullable<typeof n> => !!n)
+      const patches = alignNodes(nodes, mode)
+      for (const [id, patch] of patches) {
+        store.updateNode(id as NodeId, patch)
+      }
+      closeMenu()
+    },
+    [store, selection, closeMenu],
+  )
+
+  const selectedCount = selection().length
+  const canAlign = selectedCount >= 2
+  const canDistribute = selectedCount >= 3
+
+  // ---- Group & collapse cluster ---------------------------------------
+  // Bundle the selected nodes into a named group and hide them; the
+  // ClusterOverlay renders an Expand proxy at the centroid. Requires ≥2
+  // nodes (a one-node cluster is pointless).
+  const handleGroupCollapse = useCallback(() => {
+    const ids = selection()
+    const nodes = ids
+      .map((id) => store.getNode(id as NodeId))
+      .filter((n): n is NonNullable<typeof n> => !!n)
+    if (nodes.length < 2 || !boardId) return
+    const name = window.prompt("Cluster name", `Cluster ${store.getAllGroups().length + 1}`)
+    groupAndCollapse(store, nodes, boardId, name ?? undefined)
+    closeMenu()
+  }, [store, selection, closeMenu, boardId])
 
   // ---- Export -----------------------------------------------------------
   const handleExportPng = useCallback(async () => {
@@ -295,6 +338,43 @@ export function CanvasContextMenu({ wrapRef, store, rendererRef }: CanvasContext
       <MenuButton icon={StackPlusIcon} label="Send forward" onClick={handleSendForward} />
       <MenuButton icon={StackMinusIcon} label="Send to back" onClick={handleSendToBack} />
       <MenuButton icon={StackPlusIcon} label="Send to front" onClick={handleSendToFront} />
+
+      {canAlign && (
+        <>
+          <Divider />
+          <SectionLabel>Align{` (${selectedCount})`}</SectionLabel>
+          <div className="grid grid-cols-3 gap-1 px-2 py-1">
+            <AlignButton label="Left" onClick={() => handleAlign("left")} />
+            <AlignButton label="Center" onClick={() => handleAlign("center-h")} />
+            <AlignButton label="Right" onClick={() => handleAlign("right")} />
+            <AlignButton label="Top" onClick={() => handleAlign("top")} />
+            <AlignButton label="Middle" onClick={() => handleAlign("middle-v")} />
+            <AlignButton label="Bottom" onClick={() => handleAlign("bottom")} />
+          </div>
+          {canDistribute && (
+            <div className="grid grid-cols-2 gap-1 px-2 pb-1">
+              <AlignButton label="Distribute ↔" onClick={() => handleAlign("distribute-h")} />
+              <AlignButton label="Distribute ↕" onClick={() => handleAlign("distribute-v")} />
+            </div>
+          )}
+          <MenuButton
+            icon={SquaresFourIcon}
+            label="Group & collapse selected"
+            onClick={handleGroupCollapse}
+          />
+        </>
+      )}
+
+      {selectedCount >= 1 && (
+        <>
+          <Divider />
+          <MenuButton
+            icon={ArrowSquareUpRightIcon}
+            label="Copy to board…"
+            onClick={() => { setChromeDialog("copy-to-board"); closeMenu() }}
+          />
+        </>
+      )}
 
       <Divider />
       <SectionLabel>Export</SectionLabel>
@@ -467,6 +547,20 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <div className="px-3 py-1 text-xs font-medium text-muted-foreground">
       {children}
     </div>
+  )
+}
+
+
+/** Compact label-only button used in the Align grid. */
+function AlignButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium hover:bg-muted"
+    >
+      {label}
+    </button>
   )
 }
 

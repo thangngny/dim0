@@ -24,6 +24,8 @@ export type ChromeDialog =
   | "icon-search"
   | "image-search"
   | "document-upload"
+  | "find-node"
+  | "copy-to-board"
 
 
 /**

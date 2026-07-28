@@ -67,6 +67,9 @@ import { resolveStoredEdgeColors, useStampNewEdges } from "./use-stamp-new-edges
 import { useStampNewNodes } from "./use-stamp-new-nodes"
 import { useStyleMemory } from "./use-style-memory"
 import { CUSTOM_NODE_TYPES } from "./custom-node-types"
+import { ClusterOverlay } from "./cluster-overlay"
+import { restoreCollapsedGroups } from "./collapsed-groups"
+import { LinkOverlay } from "./link-overlay"
 import { useLocalPresence } from "./use-local-presence"
 import { useWsCollab } from "./use-ws-collab"
 import { useThumbnailCapture } from "./use-thumbnail-capture"
@@ -313,6 +316,8 @@ export function HarnessCanvas() {
         if (cancelled) return
         setIsLoading(false)
         setReady(true)
+        // Re-apply persisted collapsed clusters (localStorage per-board).
+        restoreCollapsedGroups(store, boardId)
       })
     return () => {
       cancelled = true
@@ -394,7 +399,12 @@ function HarnessCanvasInner({
             onClick={onClick}
             onDoubleClick={onDoubleClick}
             onRenderer={onRenderer}
-          />
+          >
+            {/* Feature E: clickable source-link checklist under research nodes. */}
+            <LinkOverlay />
+            {/* Feature D-rest: collapse/expand cluster proxy chips. */}
+            <ClusterOverlay />
+          </Canvas>
           {/*
             Paper grain over the canvas surface: sits above the drawn
             scene (z-index 1) but below all chrome (z-50+), pointer-events
