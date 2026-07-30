@@ -69,6 +69,10 @@ export function ResearchLivePanel({ boardId, forceOpen }: ResearchLivePanelProps
             events: body.events || [],
             updated_at: body.updated_at,
           })
+        } else {
+          // New board has no active research — drop the previous board's
+          // stale snapshot so its agent cards don't render here.
+          clearResearchLive()
         }
         const active = body?.active === true || (
           body && !body.completed && !body.failed && (body.agents || []).some(
