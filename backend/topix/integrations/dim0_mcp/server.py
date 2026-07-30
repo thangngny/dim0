@@ -562,6 +562,10 @@ async def handle_dim0_layout_nodes(args: dict) -> dict:
     payload = {
         "created_ids": args.get("created_ids", []),
         "created_link_ids": args.get("created_link_ids", []),
+        # Default to the hierarchical research tier layout
+        # (Question → WS → Finding → Source → Summary); without this the
+        # endpoint falls back to flex-wrap and bypasses research_layout.
+        "mode": args.get("mode", "research"),
     }
     return await _api("POST", f"/integration/boards/{board_id}/layout", json=payload)
 
@@ -569,8 +573,19 @@ async def handle_dim0_layout_nodes(args: dict) -> dict:
 async def handle_dim0_emit_research_event(args: dict) -> dict:
     """Forward structured sub-agent progress to integration API (live UI)."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID or "unknown"
+    # Resolve the session the runner is polling. A fabricated uuid would
+    # land the event in a SessionProgress bucket nobody reads, so the
+    # `completed`/`failed` signal never reaches the tracked session and
+    # the run can only end via the node-count heuristic.
+    session_id = args.get("session_id")
+    if not session_id:
+        from topix.integrations.research_progress import get_board_latest_session
+
+        session_id = get_board_latest_session(board_id)
+    if not session_id:
+        return {"error": "session_id required (none provided and no active session for this board)"}
     payload = {
-        "session_id": args.get("session_id", str(uuid.uuid4())),
+        "session_id": session_id,
         "event_type": args.get("event_type", "planning"),
         "label": args.get("label"),
         "board_id": board_id,
@@ -590,7 +605,13 @@ async def handle_dim0_upsert_research_graph(args: dict) -> dict:
     if not board_id:
         return {"error": "board_id required — set DIM0_DEFAULT_BOARD_ID or pass board_id"}
 
-    session_id = args.get("session_id", str(uuid.uuid4()))
+    # Associate the write with the runner's tracked session when the agent
+    # omits one, so node metadata + idempotency line up with the live run.
+    session_id = args.get("session_id")
+    if not session_id:
+        from topix.integrations.research_progress import get_board_latest_session
+
+        session_id = get_board_latest_session(board_id) or str(uuid.uuid4())
     idem_key = args.get("idempotency_key")
     phase = args.get("phase", "research")
     run_layout = args.get("run_layout", True)

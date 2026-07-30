@@ -224,6 +224,11 @@ async def run_clarify_questions_claude(
             proc.kill()
         except ProcessLookupError:
             pass
+        # Reap the killed process so it doesn't linger as a zombie.
+        try:
+            await proc.wait()
+        except Exception:
+            pass
         raise RuntimeError("claude CLI clarify pass timed out")
 
     text = (stdout_bytes or b"").decode("utf-8", errors="replace")

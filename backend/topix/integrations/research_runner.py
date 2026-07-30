@@ -97,6 +97,7 @@ def completed_early_done_action(
     baseline: int,
     grace_started: float | None,
     now: float,
+    mode: ResearchMode | None = None,
     grace_seconds: float = COMPLETED_ZERO_NODE_GRACE_S,
 ) -> tuple[Literal["done", "wait_start", "wait_continue", "grace_expire"] | None, float | None]:
     """Decide the runner's response to an MCP `completed` event.
@@ -111,9 +112,16 @@ def completed_early_done_action(
     ``grace_started`` is the (possibly newly set) grace-window timestamp.
     Extracted as a pure function so the 0-node guard is unit-testable
     without driving the full SSE/subprocess loop.
+
+    ``mode``: improve/reframe/critique mutate existing nodes rather than
+    creating new ones, so node count never exceeds baseline. For those
+    modes a `completed` event is treated as a real finish immediately —
+    the count-based 0-node guard would otherwise false-positive them.
     """
     if not completed:
         return None, grace_started
+    if mode in (ResearchMode.IMPROVE, ResearchMode.REFRAME, ResearchMode.CRITIQUE):
+        return "done", grace_started
     if last_node_count > baseline:
         return "done", grace_started
     if grace_started is None:
@@ -754,6 +762,7 @@ async def stream_research_claude(
                             baseline=baseline,
                             grace_started=completion_grace_started,
                             now=time.time(),
+                            mode=body.mode,
                         )
                         if action == "done":
                             yield (
@@ -931,6 +940,31 @@ async def stream_research_claude(
         logger.exception("research_runner: claude failed mode=%s board=%s", body.mode, board_id)
         yield f"data: {json.dumps({'status': 'error', 'detail': str(exc)})}\n\n"
     finally:
+        # Reap the subprocess + stdout reader on ANY exit path, including
+        # client disconnect (GeneratorExit is BaseException, so the
+        # `except Exception` above does NOT catch it). Without this a dropped
+        # SSE connection orphans the `claude` process until it self-exits.
+        proc = locals().get("proc")
+        if proc is not None and proc.returncode is None:
+            try:
+                proc.terminate()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    try:
+                        await asyncio.wait_for(proc.wait(), timeout=3.0)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        out_task = locals().get("out_task")
+        if out_task is not None and not out_task.done():
+            out_task.cancel()
+            try:
+                await out_task
+            except Exception:
+                pass
         clear_session(session_id)
         if body.mode in (ResearchMode.EXPAND, ResearchMode.IMPROVE):
             end_scope(board_id, session_id)

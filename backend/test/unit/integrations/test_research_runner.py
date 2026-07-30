@@ -91,6 +91,20 @@ def test_completed_action_writes_during_grace_finishes_immediately():
     assert action == "done"
 
 
+def test_completed_action_mutate_modes_finish_without_new_nodes():
+    """improve/reframe/critique mutate existing nodes instead of creating
+    new ones, so node count never exceeds baseline. A `completed` event
+    for these modes must finish immediately instead of falling into the
+    0-node grace window (which would emit a false '0 nodes written'
+    warning and waste the grace timeout)."""
+    for mode in (ResearchMode.IMPROVE, ResearchMode.REFRAME, ResearchMode.CRITIQUE):
+        action, _ = completed_early_done_action(
+            completed=True, last_node_count=0, baseline=0,
+            grace_started=None, now=100.0, mode=mode,
+        )
+        assert action == "done", f"{mode} should finish on completed without new nodes"
+
+
 def test_build_prompt_expand_includes_focus_and_evidence():
     p = build_research_prompt(
         board_id="b1",
