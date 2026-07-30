@@ -1,8 +1,10 @@
 x-qdrant: &qdrant-base
   image: qdrant/qdrant:latest
+  restart: unless-stopped
 
 x-postgres: &postgres-base
   image: postgres:15
+  restart: unless-stopped
   environment:
     POSTGRES_DB: topix
     POSTGRES_USER: topix
@@ -10,6 +12,7 @@ x-postgres: &postgres-base
 
 x-redis: &redis-base
   image: redis:7-alpine
+  restart: unless-stopped
   command: redis-server --appendonly yes
 
 services:
