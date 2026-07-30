@@ -270,6 +270,29 @@ class GraphStore:
 
         await self._content_store.delete(all_ids, hard_delete=hard_delete)
 
+        # Cascade-delete links whose source or target was removed, mirroring
+        # delete_subtree — otherwise get_graph returns dangling edges that
+        # point at the deleted nodes and accumulate forever.
+        board_id = existing_nodes[0].graph_uid
+        orphan_link_results = await self._content_store.filt(
+            filters=Filter(
+                must=[
+                    FieldCondition(key="graph_uid", match=MatchValue(value=board_id)),
+                    FieldCondition(key="type", match=MatchValue(value="link")),
+                ],
+                should=[
+                    FieldCondition(key="source", match=MatchAny(any=all_ids)),
+                    FieldCondition(key="target", match=MatchAny(any=all_ids)),
+                ],
+            )
+        )
+        orphan_link_ids = [
+            result.id for result in orphan_link_results
+            if isinstance(result.resource, Link)
+        ]
+        if orphan_link_ids:
+            await self._content_store.delete(orphan_link_ids, hard_delete=hard_delete)
+
         # deleted associated chunks for every removed node in one filter
         def _log_task_result(task: asyncio.Task) -> None:
             try:
@@ -699,17 +722,23 @@ class GraphStore:
             await update_graph_by_uid(conn, graph_uid, data)
 
     async def delete_graph(self, graph_uid: str, hard_delete: bool = False):
-        """Delete a graph by its UID."""
+        """Delete a graph by its UID.
+
+        Qdrant content is removed BEFORE the Postgres row so a content-store
+        failure leaves the graph listed (PG row intact) and the delete
+        retriable. The old order committed the PG row first and orphaned
+        Qdrant points on a content-store failure — no board row remained to
+        drive a retry.
+        """
+        await self._content_store.delete_by_filters(
+            filters={"must": [{"key": "graph_uid", "match": {"value": graph_uid}}]},
+            hard_delete=hard_delete
+        )
         async with self._pg_pool.acquire() as conn:
             if not hard_delete:
                 await delete_graph_by_uid(conn, graph_uid)
             else:
                 await _dangerous_hard_delete_graph_by_uid(conn, graph_uid)
-
-        await self._content_store.delete_by_filters(
-            filters={"must": [{"key": "graph_uid", "match": {"value": graph_uid}}]},
-            hard_delete=hard_delete
-        )
 
     async def list_graphs(self, user_uid: str) -> list[tuple[Graph, str, str | None]]:
         """List the user's boards with their per-board role + owner email.

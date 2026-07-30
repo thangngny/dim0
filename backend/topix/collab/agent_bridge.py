@@ -436,12 +436,19 @@ class AgentBoardBridge:
             e for e in (graph.edges if graph else [])
             if e.target == node_id and e.source != node_id
         ]
+        # Outbound edges (original -> something) must be repointed too, else
+        # deleting the original orphans them as dangling arrows.
+        outbound = [
+            e for e in (graph.edges if graph else [])
+            if e.source == node_id and e.target != node_id
+        ]
 
         if not confirm:
             return {
                 "preview": {
                     "new_nodes": len(parts),
                     "inbound_edges_repointed": len(inbound),
+                    "outbound_edges_repointed": len(outbound),
                     "delete_original": delete_original,
                 },
             }
@@ -464,6 +471,10 @@ class AgentBoardBridge:
         # Repoint inbound edges onto the first new note.
         if inbound and new_ids:
             updates = [(e.id, {"target": new_ids[0]}) for e in inbound]
+            await self._graph_store.update_links(updates=updates)
+        # Repoint outbound edges from the original onto the first new note.
+        if outbound and new_ids:
+            updates = [(e.id, {"source": new_ids[0]}) for e in outbound]
             await self._graph_store.update_links(updates=updates)
 
         ops: list[dict[str, Any]] = []

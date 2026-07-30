@@ -281,8 +281,10 @@ async def _send_welcome(
             return
 
         # Drifted past the buffer floor → fall back to a full snapshot.
+        # Keep the root_id scope so a sub-folder client doesn't receive the
+        # whole board (matching the first-connect branch above).
         snapshot = await read_snapshot_payload(
-            graph_store=graph_store, board_id=board_id,
+            graph_store=graph_store, board_id=board_id, root_id=root_id,
         )
         await websocket.send_json({
             "kind": "welcome",
@@ -334,17 +336,41 @@ async def _handle_message(  # noqa: C901 — flat kind-dispatch reads better tha
             except Exception:
                 logger.debug("collab op-rejected send failed", exc_info=True)
             return
-        ops = batch.get("ops") or []
+        batch = msg.get("batch")
+        if not isinstance(batch, dict):
+            batch = {}
+        ops = batch.get("ops")
+        if not isinstance(ops, list):
+            await websocket.send_json({
+                "kind": "op-rejected",
+                "client_seq": client_seq,
+                "reason": "malformed batch",
+            })
+            return
         async with room.lock:
-            seq = room.next_seq_unlocked()
-            await apply_batch(
-                graph_store=graph_store,
-                board_id=board_id,
-                user_id=user_id,
-                ops=ops,
-            )
+            try:
+                await apply_batch(
+                    graph_store=graph_store,
+                    board_id=board_id,
+                    user_id=user_id,
+                    ops=ops,
+                )
+            except Exception as e:
+                # A bad op must not kill the socket for the sender. Reject
+                # it, leave seq untouched (no gap), and keep the connection.
+                logger.exception("collab apply_batch failed board=%s", board_id, exc_info=e)
+                try:
+                    await websocket.send_json({
+                        "kind": "op-rejected",
+                        "client_seq": client_seq,
+                        "reason": "apply failed",
+                    })
+                except Exception:
+                    logger.debug("collab op-rejected send failed", exc_info=True)
+                return
             # Record in the ring so a reconnecting peer can catch up via
             # `since_seq` without a full snapshot rebuild (Phase 1c.2).
+            seq = room.next_seq_unlocked()
             room.remember_batch_unlocked(seq, batch)
             peer_op = json.dumps({"kind": "peer-op", "seq": seq, "batch": batch})
             # Send under the lock so peer-op ordering across peers
