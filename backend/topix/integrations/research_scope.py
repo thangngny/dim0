@@ -32,10 +32,13 @@ class ExpandScope:
         return node_id in self.allowed_ids or node_id in self.focus_ids
 
     def register_created(self, node_ids: list[str]) -> None:
-        """Track newly created nodes under this expand session."""
+        """Track newly created nodes under this expand session.
+
+        Counts are reserved up-front by ``assert_can_create`` (under the
+        module lock) so this only records the ids into the allowlist.
+        """
         for nid in node_ids:
             self.allowed_ids.add(nid)
-            self.created_count += 1
 
     def can_create(self, n: int = 1) -> bool:
         return self.created_count + n <= self.max_new_nodes
@@ -104,15 +107,25 @@ def assert_can_mutate(board_id: str, node_id: str) -> None:
 
 
 def assert_can_create(board_id: str, count: int) -> None:
-    """Raise ValueError if expand scope would exceed max_new_nodes."""
-    scope = get_scope(board_id)
-    if scope is None:
-        return
-    if not scope.can_create(count):
-        raise ValueError(
-            f"Expand scope max_new_nodes={scope.max_new_nodes} exceeded "
-            f"(already created {scope.created_count}, requested +{count})."
-        )
+    """Reserve ``count`` create slots atomically; raise if over budget.
+
+    The reservation (``created_count += count``) happens under the module
+    lock so two concurrent batches cannot both pass ``can_create`` against
+    a stale count and together exceed ``max_new_nodes``. ``note_created``
+    then only records the resulting ids — it no longer increments.
+    """
+    with _lock:
+        scope = _scopes.get(board_id)
+        if not scope or scope.is_expired():
+            if scope:
+                del _scopes[board_id]
+            return
+        if not scope.can_create(count):
+            raise ValueError(
+                f"Expand scope max_new_nodes={scope.max_new_nodes} exceeded "
+                f"(already created {scope.created_count}, requested +{count})."
+            )
+        scope.created_count += count
 
 
 def note_created(board_id: str, node_ids: list[str]) -> None:

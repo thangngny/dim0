@@ -179,6 +179,43 @@ def test_expand_scope_guard():
     assert_can_mutate(board, "other")
 
 
+def test_expand_scope_create_reservation_is_atomic():
+    """Concurrent assert_can_create calls must not together exceed
+    max_new_nodes. The count is reserved under the module lock at check
+    time, so only ``max_new_nodes`` slots can ever be granted regardless
+    of concurrency."""
+    import threading
+
+    board = "board-scope-race"
+    end_scope(board)
+    max_new = 10
+    begin_expand_scope(board, "sess", [], max_new_nodes=max_new)
+
+    granted = 0
+    granted_lock = threading.Lock()
+    barrier = threading.Barrier(40)
+
+    def compete():
+        nonlocal granted
+        barrier.wait()
+        try:
+            assert_can_create(board, 1)
+            with granted_lock:
+                granted += 1
+        except ValueError:
+            pass
+
+    threads = [threading.Thread(target=compete) for _ in range(40)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert granted <= max_new, f"reserved {granted} > max_new_nodes {max_new}"
+    assert granted == max_new, f"expected exactly {max_new} granted, got {granted}"
+    end_scope(board, "sess")
+
+
 def test_derive_queries():
     qs = derive_search_queries(
         "chiến dịch truyền thông thương hiệu bảo hiểm cảm động",
