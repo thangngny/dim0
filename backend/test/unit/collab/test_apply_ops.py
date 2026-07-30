@@ -25,6 +25,8 @@ class _RecordingGraphStore:
         self.delete_nodes_bulk_calls: list = []
         self.update_links_bulk_calls: list = []
         self.delete_links_bulk_calls: list = []
+        # link ids that update_links should report as failed (validation drop).
+        self.update_links_failed: set[str] = set()
 
     async def add_notes(self, nodes):
         """Add notes."""
@@ -73,6 +75,7 @@ class _RecordingGraphStore:
         self.update_links_bulk_calls.append({"updates": list(updates)})
         for link_id, data in updates:
             self.update_link_calls.append({"link_id": link_id, "data": data})
+        return set(self.update_links_failed)
 
     async def delete_links(self, link_ids):
         """Bulk delete links — record per-item plus the bulk shape."""
@@ -1017,6 +1020,26 @@ async def test_edge_update_endpoint_change():
 
     assert results[0].applied is True
     assert store.update_link_calls == [{"link_id": "e1", "data": {"target": "n3"}}]
+
+
+async def test_edge_update_marks_failed_ids_as_not_applied():
+    """When update_links drops a link (validation failure), only that op
+    is reported not-applied — the rest of the bucket still acks. Regression:
+    previously the whole bucket was acked `applied=True` for a silently
+    dropped edge.update, so the client discarded optimistic state for a
+    write that never landed."""
+    store = _RecordingGraphStore()
+    store.update_links_failed = {"e_bad"}
+    ops = [
+        {"type": "edge.update", "id": "e_ok", "patch": {"target": {"nodeId": "n3"}}, "prev": {}},
+        {"type": "edge.update", "id": "e_bad", "patch": {"target": {"nodeId": "n4"}}, "prev": {}},
+    ]
+
+    results = await apply_batch(graph_store=store, board_id="b1", user_id="u1", ops=ops)
+
+    assert results[0].applied is True
+    assert results[1].applied is False
+    assert results[1].reason == "link validation failed"
 
 
 async def test_edge_update_persists_midpoint_to_control_point():

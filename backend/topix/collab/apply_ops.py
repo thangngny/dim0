@@ -175,12 +175,28 @@ async def apply_batch(  # noqa: C901 — flat dispatch by op-kind reads better t
         results, "edge.add", edge_adds,
         lambda items: graph_store.add_links(links=[link for _, link in items]),
     )
-    await _dispatch_bucket(
-        results, "edge.update", edge_updates,
-        lambda items: graph_store.update_links(
-            updates=[(link_id, data) for _, link_id, data in items],
-        ),
-    )
+    # edge.update is special: update_links returns the set of link ids that
+    # failed Link validation (silently dropped), so we mark only those ops as
+    # not applied instead of falsely acking the whole bucket.
+    if edge_updates:
+        try:
+            failed_ids = await graph_store.update_links(
+                updates=[(link_id, data) for _, link_id, data in edge_updates],
+            )
+        except Exception as exc:
+            logger.exception("collab apply error bucket=edge.update n=%d err=%s", len(edge_updates), exc)
+            reason = str(exc)
+            for idx, *_ in edge_updates:
+                results[idx] = WireOpResult(applied=False, op_type="edge.update", reason=reason)
+        else:
+            failed_set = set(failed_ids or ())
+            for idx, link_id, _data in edge_updates:
+                if link_id in failed_set:
+                    results[idx] = WireOpResult(
+                        applied=False, op_type="edge.update", reason="link validation failed"
+                    )
+                else:
+                    results[idx] = WireOpResult(applied=True, op_type="edge.update")
     await _dispatch_bucket(
         results, "edge.remove", edge_removes,
         lambda items: graph_store.delete_links(link_ids=[link_id for _, link_id in items]),

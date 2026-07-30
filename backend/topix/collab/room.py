@@ -201,6 +201,12 @@ class Room:
         """
         async with self.lock:
             victims = [c for c in self.clients.values() if c.user_id == user_id]
+            # Downgrade to viewer under the lock so any op racing the close
+            # is rejected by the `role not in _EDIT_ROLES` check before the
+            # socket actually drops — otherwise a revoked user can mutate
+            # in the window between the PG role delete and the close landing.
+            for c in victims:
+                c.role = "viewer"
         frame = json.dumps({"kind": "kick", "reason": reason})
         kicked = 0
         for c in victims:

@@ -440,24 +440,30 @@ class GraphStore:
 
         await self._content_store.update([merged_payload])
 
-    async def update_links(self, updates: list[tuple[str, dict]]) -> None:
+    async def update_links(self, updates: list[tuple[str, dict]]) -> set[str]:
         """Bulk-patch multiple links in one DB round-trip.
 
         Mirrors `patch_notes`: single `get_links` for all ids, in-memory
         merges (input order — same-id duplicates stack), single
         `_content_store.update` write. Used by the collab apply path
         when a batch carries multiple `edge.update` ops.
+
+        Returns the set of link ids whose merged payload failed Link
+        validation (silently dropped from the write) so the caller can
+        report those ops as not applied instead of falsely acking them.
         """
         if not updates:
-            return
+            return set()
         unique_ids = list(dict.fromkeys(link_id for link_id, _ in updates))
         existing_links = await self.get_links(unique_ids)
         by_id: dict[str, Link] = {link.id: link for link in existing_links}
 
         merged_payloads: list[dict] = []
+        failed_ids: set[str] = set()
         for link_id, data in updates:
             cur = by_id.get(link_id)
             if cur is None:
+                failed_ids.add(link_id)
                 continue
             merged = self._deep_merge_dict(
                 cur.model_dump(exclude_none=False),
@@ -470,12 +476,14 @@ class GraphStore:
                 merged_link = Link.model_validate(merged)
             except Exception:
                 logger.exception("update_links: failed to validate merged link id=%s", link_id)
+                failed_ids.add(link_id)
                 continue
             by_id[link_id] = merged_link
             merged_payloads.append(merged_link.model_dump(exclude_none=False))
 
         if merged_payloads:
             await self._content_store.update(merged_payloads)
+        return failed_ids
 
     async def delete_link(self, link_id: str):
         """Delete a link from the graph."""
