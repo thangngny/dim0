@@ -50,7 +50,21 @@ async def create_chat(
     board_id: Annotated[str, Query(description="Board Unique ID")] = None,
     chat_id: Annotated[str | None, Query(description="Optional Chat ID")] = None,
 ):
-    """Create a new chat for the user."""
+    """Create a new chat for the user.
+
+    When ``board_id`` is supplied the chat is bound to that board so the
+    assistant's note tools can read/write it. Verify membership first to
+    prevent a user binding a chat to a board they cannot access (which
+    would otherwise let the agent tools read/write a victim board).
+    """
+    if board_id:
+        graph_store: GraphStore = request.app.graph_store
+        role = await graph_store.get_graph_role(graph_uid=board_id, user_uid=user_id)
+        if role not in {"owner", "member"}:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Board not found"
+            )
+
     uid = chat_id or gen_uid()
     new_chat = Chat(uid=uid, user_uid=user_id, graph_uid=board_id)
 

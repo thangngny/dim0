@@ -486,17 +486,17 @@ async def batch_create(
             node_meta.append((node_input.client_ref, was_redacted, kind))
             if was_redacted:
                 overall_redacted = True
-        except Exception as exc:
+        except Exception:
             logger.exception("integration: failed to build note client_ref=%s", node_input.client_ref)
-            raise HTTPException(status_code=422, detail=f"Invalid node '{node_input.client_ref}': {exc}")
+            raise HTTPException(status_code=422, detail=f"Invalid node '{node_input.client_ref}'")
 
     kind_by_id: dict[str, str] = {}
     if notes_to_add:
         try:
             await bridge.add_notes(board_id=board_id, notes=notes_to_add)
-        except Exception as exc:
+        except Exception:
             logger.exception("integration: add_notes failed board=%s", board_id)
-            raise HTTPException(status_code=500, detail=f"Failed to create nodes: {exc}")
+            raise HTTPException(status_code=500, detail="Failed to create nodes")
 
         created_ids: list[str] = []
         for note, (client_ref, was_redacted, kind) in zip(notes_to_add, node_meta):
@@ -546,9 +546,9 @@ async def batch_create(
     if links_to_add:
         try:
             await bridge.add_links(board_id=board_id, links=links_to_add)
-        except Exception as exc:
+        except Exception:
             logger.exception("integration: add_links failed board=%s", board_id)
-            raise HTTPException(status_code=500, detail=f"Failed to create edges: {exc}")
+            raise HTTPException(status_code=500, detail="Failed to create edges")
 
         for link, (source_ref, target_ref) in zip(links_to_add, edge_meta):
             edge_results.append(EdgeResult(

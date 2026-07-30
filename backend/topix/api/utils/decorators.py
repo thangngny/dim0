@@ -42,9 +42,11 @@ def with_standard_response(func: Callable[..., Awaitable[Any]]) -> Callable[...,
             logger.error(f"Error in {func.__name__}: {str(e)}", exc_info=True)
             if response:
                 response.status_code = 500
+            # Do not surface raw exception text to the client — it can
+            # leak SQL fragments, column names, or driver internals.
             return {
                 "status": "error",
-                "data": {"message": "Internal server error", "details": str(e)}
+                "data": {"message": "Internal server error"}
             }
 
     return wrapper

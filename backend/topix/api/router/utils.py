@@ -98,10 +98,13 @@ async def check_link(
     if not safe:
         return {"ok": False, "status_code": None, "reason": reason}
     try:
+        # Do NOT follow redirects automatically: a public host that 302's
+        # to an internal/loopback target would bypass _is_safe_url. We
+        # probe only the validated URL and surface the redirect status
+        # (the client can re-check the Location itself if it wants).
         async with httpx.AsyncClient(
             timeout=8.0,
-            follow_redirects=True,
-            max_redirects=5,
+            follow_redirects=False,
             headers={"User-Agent": "dim0-link-check/1.0"},
         ) as client:
             try:

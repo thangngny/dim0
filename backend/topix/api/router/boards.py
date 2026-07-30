@@ -515,7 +515,20 @@ async def save_graph_thumbnail(
     file: UploadFile = File(...),
 ):
     """Save a thumbnail image for the graph."""
-    file_bytes = await file.read()
+    # Cap the upload so a large/hostile payload can't exhaust memory or
+    # fill the disk — stream in chunks and reject over the budget.
+    max_thumbnail_bytes = 5 * 1024 * 1024
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_thumbnail_bytes:
+            raise HTTPException(status_code=413, detail="Thumbnail too large (max 5MB)")
+        chunks.append(chunk)
+    file_bytes = b"".join(chunks)
     path = save_thumbnail(graph_id, file_bytes)
     store: GraphStore = request.app.graph_store
 
