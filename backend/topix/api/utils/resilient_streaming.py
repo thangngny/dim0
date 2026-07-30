@@ -6,7 +6,7 @@ import logging
 from functools import wraps
 from typing import Any, AsyncGenerator, Callable, TypeVar
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 T = TypeVar("T")
@@ -64,6 +64,16 @@ def with_streaming_resilient_ndjson(  # noqa: C901
                 try:
                     async for item in async_func(request, *args, **kwargs):
                         await _enqueue(serializer(item) + "\n")
+                except HTTPException as e:
+                    # Carry the real status code in the frame so the client
+                    # can react (the HTTP response is already 200 once the
+                    # stream has started, so we can't change it mid-stream).
+                    try:
+                        await _enqueue(
+                            json.dumps({"error": e.detail, "status_code": e.status_code}) + "\n"
+                        )
+                    except Exception:
+                        pass
                 except Exception as e:
                     try:
                         await _enqueue(json.dumps({"error": str(e)}) + "\n")
