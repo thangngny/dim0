@@ -1,7 +1,12 @@
-"""Unit tests for source dedup-by-URL (sub-project C)."""
+"""Unit tests for source dedup-by-URL and reliability grading (sub-project C)."""
 from topix.integrations.research_citation import (
     build_existing_url_index,
+    corroboration_count,
+    extract_domain,
     extract_urls,
+    extract_year,
+    grade_source_reliability,
+    page_age_score,
     plan_dedup,
 )
 
@@ -15,7 +20,7 @@ def test_extract_urls_finds_markdown_and_raw():
 
 
 def test_extract_urls_ignores_non_http():
-    """mailto / javascript / ftp are not citations."""
+    """Mailto / javascript / ftp are not citations."""
     assert extract_urls("mailto:a@b.com ftp://x") == set()
 
 
@@ -61,3 +66,98 @@ def test_plan_dedup_passthrough_when_no_url():
     to_create, reuse = plan_dedup(new, {})
     assert to_create == new
     assert reuse == {}
+
+
+# --- reliability grading -----------------------------------------------------
+
+
+def test_extract_domain_strips_www_and_lowercases():
+    """extract_domain lowercases the host and drops a leading www."""
+    assert extract_domain("https://WWW.Example.com/path") == "example.com"
+    assert extract_domain("https://gov.vn/p") == "gov.vn"
+    assert extract_domain("not a url") is None
+    assert extract_domain(None) is None
+
+
+def test_extract_year_picks_most_recent():
+    """extract_year returns the latest plausible year mentioned."""
+    assert extract_year("Data from 2019 and 2024 updates") == 2024
+    assert extract_year("no date here") is None
+    assert extract_year("year 1899 then 2025") == 2025
+
+
+def test_page_age_score_decays_with_age():
+    """Recency is 1.0 for the current year and decays ~0.15/yr, floored at 0.1."""
+    assert page_age_score(2026, 2026) == 1.0
+    assert page_age_score(2024, 2026) == 0.7
+    assert page_age_score(2010, 2026) == 0.1
+    assert page_age_score(None, 2026) == 0.4
+
+
+def test_corroboration_count_counts_citing_findings():
+    """corroboration_count counts findings whose text contains the source URL."""
+    findings = [
+        {"content": "see https://a.com/p for detail"},
+        {"label": {"markdown": "[A](https://a.com/p) says..."}},
+        {"content": "no link here"},
+    ]
+    assert corroboration_count("https://a.com/p", findings) == 2
+    assert corroboration_count("https://other.com", findings) == 0
+    assert corroboration_count("", findings) == 0
+
+
+def _source(url: str, year: int | None, content: str = "") -> dict:
+    meta = {"url": url} if url else {}
+    text = content if content else (f"Report {year}" if year else "undated")
+    return {"kind": "source", "metadata": meta, "content": text}
+
+
+def test_grade_trusted_recent_corroborated_is_high():
+    """A .gov source from the current year cited by ≥2 findings grades high."""
+    src = _source("https://stats.gov.vn/report", 2026)
+    findings = [
+        {"content": "per https://stats.gov.vn/report"},
+        {"content": "[x](https://stats.gov.vn/report)"},
+    ]
+    g = grade_source_reliability(src, findings, current_year=2026)
+    assert g["grade"] == "high"
+    assert g["blocked"] is False
+    assert g["corroboration"] == 2
+    assert "trusted domain" in " ".join(g["reasons"])
+
+
+def test_grade_blocklisted_domain_is_low_regardless_of_rest():
+    """A blocklisted domain always grades low."""
+    src = _source("https://contentfarm.biz/x", 2026)
+    findings = [{"content": "https://contentfarm.biz/x"}]
+    g = grade_source_reliability(
+        src, findings, current_year=2026,
+        blocklist=frozenset({"contentfarm.biz"}))
+    assert g["grade"] == "low"
+    assert g["blocked"] is True
+
+
+def test_grade_stale_uncorroborated_normal_domain_is_medium_or_low():
+    """A normal domain with an old year and no corroboration does not grade high."""
+    src = _source("https://blog.example.com/post", 2018, content="post from 2018")
+    g = grade_source_reliability(src, [], current_year=2026)
+    assert g["grade"] in ("medium", "low")
+    assert g["score"] < 0.7
+
+
+def test_grade_allowlist_overrides_to_trusted():
+    """An allowlisted normal domain earns the trusted-domain bonus."""
+    src = _source("https://kenresearch.com/ev", 2025)
+    g = grade_source_reliability(
+        src, [{"content": "https://kenresearch.com/ev"}],
+        current_year=2026, allowlist=frozenset({"kenresearch.com"}))
+    assert g["grade"] == "high"
+
+
+def test_grade_missing_date_neutral_recency():
+    """A source with no date still gets a usable grade (no crash, neutral recency)."""
+    src = _source("https://example.com/p", None)
+    g = grade_source_reliability(src, [], current_year=2026)
+    assert g["year"] is None
+    assert "no date found" in g["reasons"]
+    assert g["grade"] in ("low", "medium")
