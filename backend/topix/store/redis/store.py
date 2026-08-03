@@ -30,6 +30,7 @@ class RedisStore:
             port=redis_config.port,
             db=redis_config.db,
             password=redis_config.password.get_secret_value() if redis_config.password else None,
+            ssl=redis_config.ssl,
             decode_responses=True
         )
 

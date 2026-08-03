@@ -127,6 +127,7 @@ def _redis() -> Any:
             port=rc.port,
             db=rc.db,
             password=rc.password.get_secret_value() if rc.password else None,
+            ssl=rc.ssl,
             decode_responses=True,
             socket_connect_timeout=0.5,
             socket_timeout=0.5,

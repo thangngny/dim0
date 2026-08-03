@@ -98,6 +98,7 @@ class RedisConfig(BaseModel):
     port: int = 6379
     db: int = 0
     password: SecretStr | None = None
+    ssl: bool = False
 
     def model_post_init(self, __context):
         """Post-initialization to set up any derived attributes."""
@@ -119,6 +120,10 @@ class RedisConfig(BaseModel):
         env_db = os.getenv("REDIS_DB")
         if env_db:
             self.db = int(env_db)
+
+        env_ssl = os.getenv("REDIS_SSL")
+        if env_ssl:
+            self.ssl = env_ssl.lower() in ("1", "true", "yes", "on")
 
 
 class DatabasesConfig(BaseModel):
