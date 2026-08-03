@@ -22,8 +22,8 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from topix.config.config import Config, QdrantConfig
 from topix.config import catalog
+from topix.config.config import Config, QdrantConfig
 from topix.datatypes.resource import Resource, dict_to_embeddable
 from topix.nlp.embed import OpenAIEmbedder
 from topix.store.qdrant.utils import (
@@ -222,7 +222,21 @@ class ContentStore:
                 indices.append(i)
                 searchable_texts.append(text)
 
-        embeds = await self.embedder.embed(searchable_texts)
+        try:
+            embeds = await self.embedder.embed(searchable_texts)
+        except Exception as _embed_err:
+            # Embedding endpoint unreachable (e.g. single-origin deploy with no
+            # local Ollama). Store zero vectors so writes still land — the
+            # research/canvas flows read via `filt` (filter), not vector search,
+            # so this loses no active functionality. Real embeddings resume
+            # once OLLAMA_BASE_URL points at a reachable embed endpoint.
+            logger.warning(
+                "Embedding failed (%s) — storing zero vectors. Research/canvas "
+                "filter reads are unaffected; set OLLAMA_BASE_URL to a reachable "
+                "embed endpoint to restore semantic search.",
+                _embed_err,
+            )
+            embeds = [[0.0] * self.embedder.dimensions for _ in searchable_texts]
 
         # Create a list of embeddings with the same length as entries
         embeddings = [None] * len(entries)
