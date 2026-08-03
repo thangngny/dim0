@@ -1472,6 +1472,15 @@
         }
       }
     }
+    if (!finished) {
+      // Stream closed without a done/error frame — the backend ended the run
+      // abnormally (subprocess died, restart, or a pre-fix hang). Don't leave
+      // the UI stuck on "running"; surface it so the user can retry or open
+      // the board to see whether any nodes landed.
+      setStatus(statusId, "error", "⚠️ Research kết thúc mà không báo hoàn tất — mở board xem node đã có, hoặc chạy lại.")
+      if (agentsUI) agentsUI.markAllDone()
+      if (onError) onError({ detail: "stream ended without done" })
+    }
     } catch (e) {
       // AbortError / network drop — heartbeat + UI handled by caller/stop button.
       throw e
