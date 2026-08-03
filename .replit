@@ -1,0 +1,17 @@
+# Replit project config for the dim0 single-origin deploy.
+# The backend (FastAPI) serves the built webui (launcher + canvas) at the
+# Replit public URL; Postgres/Qdrant/Redis are external managed services.
+run = "bash replit/start.sh"
+hidden = [".config", ".cache", "backend/.venv", "webui/node_modules"]
+
+# Replit exposes the app on $PORT. The backend listens on $PORT (default 8080).
+# Long-lived WebSocket (collab) + SSE (research) need an always-on deployment:
+# use a "Reserved VM" deployment (Deployments → Reserved VM), NOT Autoscale.
+entrypoint = "backend/topix/api/app.py"
+modules = ["python3-13"]
+
+[env]
+# Secrets (POSTGRES_*, QDRANT_*, REDIS_*, OLLAMA_*, ANTHROPIC_*, JWT_SECRET,
+# DIM0_INTEGRATION_TOKEN) are set in the Replit Secrets tab, not here.
+PORT = "8080"
+PYTHONDONTWRITEBYTECODE = "1"
