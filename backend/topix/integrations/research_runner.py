@@ -711,6 +711,14 @@ async def stream_research_claude(
                 elif kind == "stdout_done":
                     break
                 elif kind == "poll":
+                    # Heartbeat: emit an SSE comment every poll cycle (~4s) so the
+                    # connection never goes idle while Claude is thinking. Without
+                    # this, a long gap with no new events/nodes lets an
+                    # intermediate proxy (e.g. cloudflare quick tunnel) idle-timeout
+                    # the SSE, which the backend sees as a client disconnect → the
+                    # research is killed mid-flight (0 nodes). A `: ` comment line
+                    # is ignored by EventSource clients + our launcher's readSSE.
+                    yield ": heartbeat\n\n"
                     # Flush new structured agent events to SSE (launcher timeline).
                     new_events, event_cursor = list_events_since(session_id, event_cursor)
                     for se in new_events:
