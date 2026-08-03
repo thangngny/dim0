@@ -89,6 +89,20 @@ def default_effort_for_mode(mode: ResearchMode) -> str:
 # before the runner terminates the process. Tuned for ultracode writes.
 COMPLETED_ZERO_NODE_GRACE_S = 30.0
 
+# Hard backstop: kill a research run that has run this long regardless of
+# agent state, so a hung Claude subprocess (stuck on the LLM provider, a
+# blocked tool call, or a grandchild holding the stdout pipe open) cannot
+# hang the launcher in "running" forever. Generous vs. legit ultracode
+# runs (~12 min); tune up only if a real run legitimately exceeds this.
+RESEARCH_RUN_TIMEOUT_S = 1800.0
+
+# After the Claude subprocess exits (returncode set), wait this long for
+# the stdout reader to deliver any remaining lines + `stdout_done` before
+# breaking the loop ourselves. Without this, a grandchild holding the
+# stdout pipe open means `stdout_done` never arrives and the loop polls
+# forever even though Claude is already gone.
+PROC_EXIT_DRAIN_GRACE_S = 5.0
+
 
 def completed_early_done_action(
     *,
@@ -655,6 +669,12 @@ async def stream_research_claude(
         last_node_count = -1
         stable_since: float | None = None
         completion_grace_started: float | None = None
+        # Track subprocess exit + overall run deadline so a hung Claude
+        # (or a grandchild holding the stdout pipe) cannot park the run in
+        # "running" forever — see PROC_EXIT_DRAIN_GRACE_S / RESEARCH_RUN_TIMEOUT_S.
+        proc_ended_at: float | None = None
+        run_started_at = time.time()
+        timed_out = False
         baseline = await _count_nodes()
         if baseline < 0:
             baseline = 0
@@ -843,9 +863,49 @@ async def stream_research_claude(
                         early_done = True
                         break
 
+                # Hard backstop: a run exceeding RESEARCH_RUN_TIMEOUT_S is a
+                # hung Claude (stuck provider call, blocked tool, or a grandchild
+                # holding the stdout pipe). Terminate instead of polling forever.
+                if (not timed_out) and (time.time() - run_started_at) > RESEARCH_RUN_TIMEOUT_S:
+                    timed_out = True
+                    yield (
+                        "data: "
+                        + json.dumps(
+                            {
+                                "status": "error",
+                                "detail": (
+                                    f"research timed out after "
+                                    f"{RESEARCH_RUN_TIMEOUT_S:.0f}s — claude did not finish"
+                                ),
+                            }
+                        )
+                        + "\n\n"
+                    )
+                    early_done = True
+                    break
+
+                # Claude exited. `stdout_done` normally ends the loop, but a
+                # grandchild can hold the stdout pipe open so it never arrives.
+                # After a short drain grace, break ourselves so the run
+                # terminates (and clear_session runs) instead of polling forever.
                 if proc.returncode is not None and kind != "stdout":
-                    # process ended; drain remaining handled by stdout_done
-                    pass
+                    if proc_ended_at is None:
+                        proc_ended_at = time.time()
+                    elif time.time() - proc_ended_at >= PROC_EXIT_DRAIN_GRACE_S:
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                {
+                                    "status": "progress",
+                                    "text": (
+                                        f"Claude exited (code={proc.returncode}); "
+                                        "finishing run."
+                                    ),
+                                }
+                            )
+                            + "\n\n"
+                        )
+                        break
         finally:
             poll_task.cancel()
             # leave out_task; process may still be writing
