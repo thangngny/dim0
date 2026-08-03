@@ -39,6 +39,16 @@ class QdrantConfig(BaseModel):
             self.port = int(env_port)
             logger.info(f"Qdrant port set from environment QDRANT_PORT: {self.port}")
 
+        env_collection = os.getenv("QDRANT_COLLECTION")
+        if env_collection:
+            self.collection = env_collection
+        env_https = os.getenv("QDRANT_HTTPS")
+        if env_https:
+            self.https = env_https.lower() in ("1", "true", "yes", "on")
+        env_api_key = os.getenv("QDRANT_API_KEY")
+        if env_api_key:
+            self.api_key = SecretStr(env_api_key)
+
 
 class PostgresConfig(BaseModel):
     """Configuration for PostgreSQL database connection."""
@@ -60,6 +70,16 @@ class PostgresConfig(BaseModel):
         if env_port:
             self.port = int(env_port)
             logger.info(f"Postgres port set from environment POSTGRES_PORT: {self.port}")
+
+        env_user = os.getenv("POSTGRES_USER")
+        if env_user:
+            self.user = env_user
+        env_db = os.getenv("POSTGRES_DB")
+        if env_db:
+            self.database = env_db
+        env_password = os.getenv("POSTGRES_PASSWORD")
+        if env_password:
+            self.password = SecretStr(env_password)
 
     def dsn(self) -> str:
         """Return a properly encoded PostgreSQL connection string."""
@@ -95,6 +115,10 @@ class RedisConfig(BaseModel):
         if env_password:
             self.password = SecretStr(env_password)
             logger.info("Redis password set from environment REDIS_PASSWORD.")
+
+        env_db = os.getenv("REDIS_DB")
+        if env_db:
+            self.db = int(env_db)
 
 
 class DatabasesConfig(BaseModel):

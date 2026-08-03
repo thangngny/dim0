@@ -2,14 +2,17 @@
 
 import asyncio
 import logging
+import os
 
 from argparse import ArgumentParser
 from contextlib import asynccontextmanager
 
 import uvicorn
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from topix.api.router import (
     billing,
@@ -161,7 +164,62 @@ def create_app(stage: StageEnum):
     app.include_router(documents.router)
     app.include_router(integration.router)
 
+    # Optionally serve the built webui (single-origin deploy: Replit, etc.).
+    _mount_webui_if_configured(app)
+
     return app
+
+
+def _mount_webui_if_configured(app: FastAPI) -> None:
+    """Serve the built webui (launcher + canvas) from DIM0_WEBUI_DIST.
+
+    No-op unless ``DIM0_WEBUI_DIST`` points at a built dist dir, so the
+    default separate-origin deploy (webui on its own host) is unaffected.
+
+    A browser page-load to a client-side route like ``/boards/{id}`` sends
+    ``Accept: text/html`` with no Authorization. The API route
+    ``GET /boards/{graph_id}`` would 401 that navigation, so an HTTP
+    middleware intercepts HTML navigations and serves the SPA shell
+    instead. Real API calls (fetch → ``Accept */*``/``application/json``,
+    or carrying ``Authorization``) pass through to the routers.
+    """
+    dist = os.getenv("DIM0_WEBUI_DIST")
+    if not dist or not os.path.isdir(dist):
+        return
+
+    assets_dir = os.path.join(dist, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="webui-assets")
+
+    @app.middleware("http")
+    async def _serve_spa_for_navigation(request: Request, call_next):
+        # Serve the SPA shell for browser navigations only: a GET with
+        # Accept: text/html, no Authorization, not an API/docs path, and not
+        # a real static file. Everything else (API fetches, assets, docs)
+        # falls through to the routers / static mount.
+        accept = request.headers.get("accept", "")
+        path = request.url.path
+        candidate = os.path.join(dist, path.lstrip("/"))
+        is_navigation = (
+            request.method == "GET"
+            and "text/html" in accept
+            and not request.headers.get("authorization")
+            and not path.startswith(("/docs", "/openapi", "/redoc", "/integration", "/utils"))
+            and not (path != "/" and os.path.isfile(candidate))
+        )
+        if is_navigation:
+            index = os.path.join(dist, "index.html")
+            if os.path.isfile(index):
+                return FileResponse(index)
+        return await call_next(request)
+
+    @app.get("/{full_path:path}")
+    async def _serve_webui(full_path: str) -> FileResponse:
+        """Serve a known static file, else fall back to the SPA index."""
+        candidate = os.path.join(dist, full_path)
+        if full_path and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(os.path.join(dist, "index.html"))
 
 
 async def main(args) -> tuple[FastAPI, int]:
