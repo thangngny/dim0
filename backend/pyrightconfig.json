@@ -1,0 +1,23 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": ["topix", "test"],
+  "typeCheckingMode": "standard",
+  "reportOptionalMemberAccess": "warning",
+  "reportAttributeAccessIssue": "warning",
+  "reportArgumentType": "warning",
+  "reportReturnType": "warning",
+  "reportAssignmentType": "warning",
+  "reportIncompatibleVariableOverride": "warning",
+  "reportIncompatibleMethodOverride": "warning",
+  "reportOperatorIssue": "warning",
+  "reportCallIssue": "warning",
+  "reportGeneralTypeIssues": "warning",
+  "reportPossiblyUnboundVariable": "warning",
+  "reportOptionalIterable": "warning",
+  "reportIndexIssue": "warning",
+  "reportRedeclaration": "warning",
+  "reportAbstractUsage": "warning",
+  "reportInvalidTypeVarUse": "warning",
+  "reportFunctionMemberAccess": "warning"
+}
