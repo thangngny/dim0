@@ -26,6 +26,8 @@ fi
 echo "==> [3/5] Webui build (same-origin: backend serves it)"
 # config.js + launcher.html call the backend on the SAME origin (Replit URL),
 # so apiBase/BACKEND are empty → requests are relative ("/boards/...").
+# Vite build can OOM on the default ~2GB heap (large PWA bundle); bump it.
+export NODE_OPTIONS="--max-old-space-size=4096"
 mkdir -p webui/public
 cat > webui/public/config.js <<'CFG'
 window.__APP_CONFIG__ = {
