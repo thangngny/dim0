@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { MagnifyingGlassIcon } from "@phosphor-icons/react"
-import type { Node, NodeId } from "@canvas-harness/core"
+import type { NodeId } from "@canvas-harness/core"
 import { useCanvasStore } from "@canvas-harness/react"
 import {
   Dialog,

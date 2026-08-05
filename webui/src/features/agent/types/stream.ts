@@ -142,6 +142,7 @@ export const ToolNameDescription: Record<ToolName, string> = {
   create_note: "Create note",
   edit_note: "Edit note",
   get_note: "Read note",
+  describe_image: "Describe image",
   link_notes: "Link notes",
   change_note_kind: "Change note kind",
   reparent_note: "Reparent note",

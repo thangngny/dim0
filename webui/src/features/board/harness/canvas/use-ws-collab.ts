@@ -14,6 +14,7 @@ import {
   type Vec2,
 } from "@canvas-harness/core"
 import camelcaseKeys from "camelcase-keys"
+import type { ResearchAgentCard } from "@/features/board/lib/research-live-store"
 import { mintCollabTicket } from "@/features/board/api/collab-ticket"
 import { API_URL } from "@/config/api"
 import { notifyWsClose } from "@/features/connection/connection-state"
@@ -894,7 +895,7 @@ const createWebSocketSyncAdapter = ({
               failed: msg.snapshot.failed,
               active: msg.snapshot.active,
               nodes_seen: msg.snapshot.nodes_seen,
-              agents: (msg.snapshot.agents || []) as mod.ResearchAgentCard[],
+              agents: (msg.snapshot.agents || []) as ResearchAgentCard[],
               events: msg.snapshot.events || [],
               updated_at: msg.snapshot.updated_at,
             })

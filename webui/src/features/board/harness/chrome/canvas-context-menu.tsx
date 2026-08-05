@@ -31,7 +31,7 @@ import { buildContextTextFromNodes } from "@/features/board/utils/context-text"
 import { useAiSparkActions } from "@/features/board/hooks/use-ai-spark-actions"
 import { useBoardAppStore } from "../store/board-app-store"
 import { nodeToNote } from "../convert/node-to-note"
-import { alignNodes, minNodesFor, type AlignMode } from "../canvas/align-nodes"
+import { alignNodes, type AlignMode } from "../canvas/align-nodes"
 import { groupAndCollapse } from "../canvas/cluster-overlay"
 import type { NoteNode } from "@/features/board/types/flow"
 
