@@ -62,9 +62,9 @@ def test_openai_only_routes_native(clean_keys):
     # A model with no native OpenAI route is unreachable here.
     assert catalog.resolve_code("claude-opus-4.8") is None
 
-    emb = catalog.available_embedding()
-    # Depending on order, it might return ollama or openai, but since it's first in yaml it might be ollama.
-    # We just ensure it's valid.
+    # available_embedding() must not raise; its return value isn't asserted
+    # (order-dependent: ollama or openai).
+    catalog.available_embedding()
 
 
 def test_openrouter_only_routes_via_openrouter(clean_keys):

@@ -107,6 +107,8 @@ def redact_content(text: str) -> tuple[str, bool]:
 # ---------------------------------------------------------------------------
 
 class NodeInput(BaseModel):
+    """Client-side node payload for the batch-create endpoint."""
+
     client_ref: str = Field(..., description="Client-side reference for edge resolution")
     kind: str = Field(default="note", description="Semantic type: question, finding, source, etc.")
     title: str | None = Field(default=None, description="Short title (label)")
@@ -117,12 +119,16 @@ class NodeInput(BaseModel):
 
 
 class EdgeInput(BaseModel):
+    """Client-side edge payload for the batch-create endpoint."""
+
     source_ref: str = Field(..., description="client_ref of source node")
     target_ref: str = Field(..., description="client_ref of target node")
     relation: str | None = Field(default=None, description="Edge label/relation type")
 
 
 class BatchCreateRequest(BaseModel):
+    """Bulk-create nodes + edges under an optional idempotency key."""
+
     session_id: str | None = None
     idempotency_key: str | None = None
     nodes: list[NodeInput] = Field(default_factory=list)
@@ -130,12 +136,16 @@ class BatchCreateRequest(BaseModel):
 
 
 class NodeResult(BaseModel):
+    """Per-node creation result carrying the resolved node id."""
+
     client_ref: str
     node_id: str
     created: bool
 
 
 class EdgeResult(BaseModel):
+    """Per-edge creation result carrying the resolved edge id."""
+
     source_ref: str
     target_ref: str
     edge_id: str
@@ -143,12 +153,16 @@ class EdgeResult(BaseModel):
 
 
 class BatchCreateResponse(BaseModel):
+    """Bulk-create response: created nodes, edges, and redaction flag."""
+
     nodes: list[NodeResult]
     edges: list[EdgeResult]
     redacted: bool = False
 
 
 class NodePatchRequest(BaseModel):
+    """Partial patch for a node's title/content/metadata."""
+
     title: str | None = None
     content: str | None = None
     metadata: dict[str, Any] | None = None
@@ -392,7 +406,7 @@ async def list_nodes(
 
 
 @router.post("/boards/{board_id}/nodes:batch", response_model=BatchCreateResponse)
-async def batch_create(
+async def batch_create(  # noqa: C901  # bulk-apply logic is inherently branchy; split tracked separately
     board_id: str,
     body: BatchCreateRequest,
     request: Request,
@@ -825,11 +839,11 @@ async def get_research_progress(
 # /research + /generate — multi-mode board research via Claude CLI + MCP
 # ---------------------------------------------------------------------------
 
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse  # noqa: E402
 
-from topix.integrations.research_clarify import ClarifyRequest, run_clarify
-from topix.integrations.research_plan import PlanRequest, run_plan
-from topix.integrations.research_runner import (
+from topix.integrations.research_clarify import ClarifyRequest, run_clarify  # noqa: E402
+from topix.integrations.research_plan import PlanRequest, run_plan  # noqa: E402
+from topix.integrations.research_runner import (  # noqa: E402
     ResearchBudget,
     ResearchMode,
     ResearchRequest,
@@ -871,28 +885,36 @@ async def research_plan(
     body: PlanRequest,
     _: None = Depends(_verify_token),
 ):
-    """Approve-before-run gate: produce a structured execution plan (workstreams +
-    search strategy + intended sources) the launcher shows before the full
-    research SSE fires. Reuses the clarify LiteLLM JSON path.
+    """Approve-before-run gate: produce an execution plan the launcher shows before the full research SSE fires.
+
+    Reuses the clarify LiteLLM JSON path.
     """
     return await run_plan(body)
 
 
 class SetKindRequest(BaseModel):
+    """Request body for the set-node-kind endpoint."""
+
     kind: str
 
 
 class ReparentRequest(BaseModel):
+    """Request body for the reparent-node endpoint."""
+
     parent_id: str | None = None
 
 
 class MergeRequest(BaseModel):
+    """Request body for the merge-notes endpoint."""
+
     node_ids: list[str]
     target_id: str
     confirm: bool = False
 
 
 class SplitRequest(BaseModel):
+    """Request body for the split-note endpoint."""
+
     parts: list[str]
     confirm: bool = False
     delete_original: bool = True

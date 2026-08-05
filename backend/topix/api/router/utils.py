@@ -44,10 +44,14 @@ async def ping() -> Response:
 
 
 class CheckLinkRequest(BaseModel):
+    """Request body for the SSRF-guarded link-reachability probe."""
+
     url: str = Field(..., description="Absolute http(s) URL to probe.")
 
 
 class CheckLinkResponse(BaseModel):
+    """Response body for the link-reachability probe."""
+
     ok: bool
     status_code: int | None = None
     reason: str

@@ -94,7 +94,7 @@ def merge_research_metadata(
     )
 
 
-def format_research_meta_block(meta: ResearchMeta) -> str:
+def format_research_meta_block(meta: ResearchMeta) -> str:  # noqa: C901  # format switch is branchy
     """Render a compact, skimmable metadata chip block for note content."""
     chips: list[str] = []
     chips.append(f"`{meta.normalized_phase()}`")

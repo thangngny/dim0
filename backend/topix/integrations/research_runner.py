@@ -422,12 +422,12 @@ def build_research_prompt(
     )
 
 
-async def stream_research_claude(
+async def stream_research_claude(  # noqa: C901  # research orchestration is branchy; split tracked separately
     *,
     board_id: str,
     body: ResearchRequest,
 ) -> AsyncIterator[str]:
-    """Yield SSE `data: {...}\\n\\n` lines while Claude CLI runs research."""
+    r"""Yield SSE `data: {...}\\n\\n` lines while Claude CLI runs research."""
     from topix.integrations.evidence_collect import collect_evidence_briefing
     from topix.integrations.research_scope import begin_expand_scope, end_scope
 

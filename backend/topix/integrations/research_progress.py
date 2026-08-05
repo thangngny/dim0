@@ -459,7 +459,7 @@ def _clone_unlocked(prog: SessionProgress) -> SessionProgress:
     )
 
 
-def _upsert_agent_unlocked(prog: SessionProgress, ev: ProgressEvent) -> None:
+def _upsert_agent_unlocked(prog: SessionProgress, ev: ProgressEvent) -> None:  # noqa: C901  # event switch is branchy
     aid = ev.agent_id or "lead"
     card = prog.agents.get(aid)
     if card is None:

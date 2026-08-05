@@ -26,10 +26,11 @@ class ExpandScope:
     expires_at: float = 0.0
 
     def is_expired(self) -> bool:
+        """Return whether the expand scope has expired."""
         return time.time() >= self.expires_at
 
     def allows_mutate(self, node_id: str) -> bool:
-        """True if update/delete is allowed for this node."""
+        """Return whether update/delete is allowed for this node."""
         return node_id in self.allowed_ids or node_id in self.focus_ids
 
     def register_created(self, node_ids: list[str]) -> None:
@@ -42,6 +43,7 @@ class ExpandScope:
             self.allowed_ids.add(nid)
 
     def can_create(self, n: int = 1) -> bool:
+        """Return whether n more nodes can be created within the limit."""
         return self.created_count + n <= self.max_new_nodes
 
 

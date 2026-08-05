@@ -172,7 +172,7 @@ def _repo_root() -> str:
     )
 
 
-async def run_clarify_questions_claude(
+async def run_clarify_questions_claude(  # noqa: C901  # CLI orchestration is branchy; split tracked separately
     *,
     board_id: str | None,
     mode: str | None,
@@ -424,7 +424,7 @@ def _scope_system(lang: str) -> str:
 
 
 def _fallback_questions(topic: str, lang: str) -> list[ClarifyQuestion]:
-    """Static questions if the LLM is unavailable."""
+    """Return static fallback questions when the LLM is unavailable."""
     if lang.lower().startswith("vi"):
         return [
             ClarifyQuestion(

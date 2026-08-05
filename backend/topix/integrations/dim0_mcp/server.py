@@ -490,6 +490,7 @@ TOOLS = [
 # ── Tool handlers ─────────────────────────────────────────────────────────────
 
 async def handle_dim0_health(_args: dict) -> dict:
+    """Probe backend /integration/health via the internal API."""
     try:
         result = await _api("GET", "/integration/health")
         return {"status": "ok", "backend": result}
@@ -498,6 +499,7 @@ async def handle_dim0_health(_args: dict) -> dict:
 
 
 async def handle_dim0_get_board(args: dict) -> dict:
+    """Fetch a full board (nodes + edges) by id via the internal API."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID
     if not board_id:
         return {"error": "board_id required — set DIM0_DEFAULT_BOARD_ID or pass board_id"}
@@ -505,6 +507,7 @@ async def handle_dim0_get_board(args: dict) -> dict:
 
 
 async def handle_dim0_list_nodes(args: dict) -> dict:
+    """List nodes for a board by id via the internal API."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID
     if not board_id:
         return {"error": "board_id required"}
@@ -512,6 +515,7 @@ async def handle_dim0_list_nodes(args: dict) -> dict:
 
 
 async def handle_dim0_create_nodes(args: dict) -> dict:
+    """Bulk-create nodes + edges on a board via the internal API."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID
     if not board_id:
         return {"error": "board_id required"}
@@ -526,6 +530,7 @@ async def handle_dim0_create_nodes(args: dict) -> dict:
 
 
 async def handle_dim0_update_node(args: dict) -> dict:
+    """Patch a node's title/content on a board via the internal API."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID
     node_id = args.get("node_id")
     if not board_id or not node_id:
@@ -539,6 +544,7 @@ async def handle_dim0_update_node(args: dict) -> dict:
 
 
 async def handle_dim0_delete_node(args: dict) -> dict:
+    """Delete a node from a board via the internal API."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID
     node_id = args.get("node_id")
     if not board_id or not node_id:
@@ -547,6 +553,7 @@ async def handle_dim0_delete_node(args: dict) -> dict:
 
 
 async def handle_dim0_delete_edge(args: dict) -> dict:
+    """Delete an edge from a board via the internal API."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID
     edge_id = args.get("edge_id")
     if not board_id or not edge_id:
@@ -555,6 +562,7 @@ async def handle_dim0_delete_edge(args: dict) -> dict:
 
 
 async def handle_dim0_layout_nodes(args: dict) -> dict:
+    """Re-run auto-layout for created nodes on a board via the internal API."""
     board_id = args.get("board_id") or DEFAULT_BOARD_ID
     if not board_id:
         return {"error": "board_id required"}
@@ -834,7 +842,7 @@ async def _handle_request(req: dict) -> dict | None:
 
 
 async def run_server() -> None:
-    """Main stdio server loop."""
+    """Run the stdio MCP server loop."""
     if not TOKEN:
         logger.error(
             "DIM0_INTEGRATION_TOKEN is not set. "

@@ -115,7 +115,7 @@ def style_for_relation(relation: str | None) -> LinkStyle:
     )
 
 
-async def apply_research_layout(
+async def apply_research_layout(  # noqa: C901  # layout dispatch is branchy
     *,
     graph_store: GraphStore,
     bridge: AgentBoardBridge,

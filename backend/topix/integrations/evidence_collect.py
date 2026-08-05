@@ -92,7 +92,7 @@ async def _search_one(engine: str, query: str, max_results: int = 5) -> list[dic
     return results
 
 
-async def collect_evidence_briefing(
+async def collect_evidence_briefing(  # noqa: C901  # evidence aggregation is branchy; split tracked separately
     instruction: str,
     *,
     language: str = "vi",

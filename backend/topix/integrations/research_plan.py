@@ -1,5 +1,4 @@
-"""Research plan gate: show the user the intended workstreams + search strategy
-before the full research run executes (approve-before-run, SP2).
+"""Research plan gate: show intended workstreams + search strategy before run.
 
 Reuses the clarify pipeline's LiteLLM JSON-completion helper so the plan
 call uses the same Ollama Cloud path. Output is structured JSON the

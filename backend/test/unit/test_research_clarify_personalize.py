@@ -1,8 +1,14 @@
 """Unit tests for personalized clarify (Claude CLI pass)."""
+import json
+
+import pytest
+
+from topix.integrations import research_clarify as rc
 from topix.integrations.research_clarify import (
     ClarifyQuestion,
     ClarifyQuestionsOut,
     ClarifyRequest,
+    build_clarify_prompt,
 )
 
 
@@ -41,9 +47,6 @@ def test_clarify_questions_out_clear_fields():
     assert out.rationale == "đã rõ"
 
 
-from topix.integrations.research_clarify import build_clarify_prompt
-
-
 def test_build_clarify_prompt_explore_vi_has_mode_and_instruction():
     """Explore prompt carries MODE, instruction, MCP read hint, clear/axis rules, vi output."""
     p = build_clarify_prompt(
@@ -67,13 +70,6 @@ def test_build_clarify_prompt_expand_includes_focus():
     assert "MODE=expand" in p
     assert "n-1" in p
     assert "n-2" in p
-
-
-import json
-
-import pytest
-
-from topix.integrations import research_clarify as rc
 
 
 class _FakeProc:

@@ -89,8 +89,9 @@ line-length = 150
 lines-between-types = 1
 
 [tool.ruff.lint.per-file-ignores]
-# Test modules don't carry public API docstrings — D1xx is noise here.
-"test/**" = ["D100", "D101", "D102", "D103", "D104"]
+# Test modules don't carry public API docstrings and don't need polished
+# docstring formatting — D* is noise here.
+"test/**" = ["D"]
 
 [tool.setuptools.packages.find]
 exclude = ["build", "test"]

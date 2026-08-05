@@ -306,7 +306,7 @@ class AgentBoardBridge:
             board_id=board_id, node_id=node_id, data=data, user_uid=user_uid,
         )
 
-    async def merge_notes(
+    async def merge_notes(  # noqa: C901  # graph surgery is branchy; split tracked separately
         self,
         *,
         board_id: str,
