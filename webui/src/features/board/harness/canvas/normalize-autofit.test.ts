@@ -1,6 +1,10 @@
 // Receiver-side guard: incoming remote ops for preview-rendered custom
-// types (sheet, etc.) must carry `style.autoFit = false`, so an agent
-// sheet from an un-upgraded backend can't grow unbounded on the next edit.
+// types (folder, code-sandbox, widget, mini-app, document) must carry
+// `style.autoFit = false`, so an agent node from an un-upgraded backend
+// can't grow unbounded on the next edit. `sheet` is intentionally NOT
+// covered: the sheet view renders the FULL markdown body (not a
+// preview), so autoFit stays on to let long content grow instead of
+// clipping — see commit b425e86.
 import { describe, expect, it } from "vitest"
 import {
   asNodeId,
@@ -42,8 +46,8 @@ describe("normalizeBatchAutoFit", () => {
   const store: CanvasStore = createCanvasStore()
 
 
-  it("forces autoFit:false on an incoming sheet node.add with no style", () => {
-    const batch = remoteBatch([addOp("sheet")])
+  it("forces autoFit:false on an incoming folder node.add with no style", () => {
+    const batch = remoteBatch([addOp("folder")])
     normalizeBatchAutoFit(batch, store)
     const op = batch.ops[0]
     expect(op.type === "node.add" && op.node.style?.autoFit).toBe(false)
@@ -51,7 +55,7 @@ describe("normalizeBatchAutoFit", () => {
 
 
   it("preserves other style fields while adding autoFit:false", () => {
-    const batch = remoteBatch([addOp("sheet", { strokeColor: "#abcdef" })])
+    const batch = remoteBatch([addOp("folder", { strokeColor: "#abcdef" })])
     normalizeBatchAutoFit(batch, store)
     const op = batch.ops[0]
     if (op.type !== "node.add") throw new Error("expected node.add")
@@ -68,8 +72,19 @@ describe("normalizeBatchAutoFit", () => {
   })
 
 
+  it("leaves an incoming sheet node.add untouched (autoFit on by design)", () => {
+    // `sheet` renders the full markdown body, so it is NOT in the
+    // autofit-disabled set (commit b425e86) — the normalizer must not
+    // force autoFit:false on it.
+    const batch = remoteBatch([addOp("sheet")])
+    normalizeBatchAutoFit(batch, store)
+    const op = batch.ops[0]
+    expect(op.type === "node.add" && op.node.style?.autoFit).toBeUndefined()
+  })
+
+
   it("covers every autofit-disabled custom type on node.add", () => {
-    for (const type of ["sheet", "code-sandbox", "widget", "mini-app", "folder", "document"]) {
+    for (const type of ["folder", "code-sandbox", "widget", "mini-app", "document"]) {
       const batch = remoteBatch([addOp(type)])
       normalizeBatchAutoFit(batch, store)
       const op = batch.ops[0]
@@ -78,12 +93,12 @@ describe("normalizeBatchAutoFit", () => {
   })
 
 
-  it("injects autoFit:false on a style-bearing node.update for an existing sheet", () => {
+  it("injects autoFit:false on a style-bearing node.update for an existing folder", () => {
     const s = createCanvasStore()
-    const id = asNodeId("sheet-1")
+    const id = asNodeId("folder-1")
     s.addNode({
       id,
-      type: "sheet",
+      type: "folder",
       x: 0,
       y: 0,
       w: 560,
@@ -107,10 +122,10 @@ describe("normalizeBatchAutoFit", () => {
 
   it("leaves a node.update with no style patch untouched (no style key created)", () => {
     const s = createCanvasStore()
-    const id = asNodeId("sheet-2")
+    const id = asNodeId("folder-2")
     s.addNode({
       id,
-      type: "sheet",
+      type: "folder",
       x: 0,
       y: 0,
       w: 560,
