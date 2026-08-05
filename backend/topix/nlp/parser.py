@@ -14,10 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 class MistralParser():
-    """A class used to parse a PDF document using the Mistral OCR API."""
+    """Parse a PDF document using the Mistral OCR API.
+
+    Requires a Mistral API key; used when ``MISTRAL_API_KEY`` is configured so
+    scanned/image PDFs get OCR'd (PypdfParser only extracts embedded text).
+    Same ``.parse(filepath)`` return shape as PypdfParser so the pipeline is
+    agnostic to which parser it holds.
+    """
 
     def __init__(self, api_key: str | None = None):
-        """Initialize the MistralParser."""
+        """Initialize the MistralParser with a Mistral API client."""
         if api_key is None:
             raise ValueError("API key is required, got None")
         self.client = Mistral(api_key=api_key)
@@ -30,18 +36,8 @@ class MistralParser():
 
         return cls(api_key=mistral_config.api_key.get_secret_value() if mistral_config.api_key else None)
 
-
-class PypdfParser:
-    """Local PDF text extractor (no API key) used as a fallback when Mistral
-    OCR is not configured.
-
-    Extracts embedded text per page with pypdf. Text-based PDFs parse fine;
-    scanned/image-only PDFs yield empty pages (OCR requires Mistral). Same
-    `.parse(filepath)` return shape as MistralParser so the pipeline is
-    agnostic to which parser it holds.
-    """
-
     def get_num_pages(self, fname: str) -> int:
+        """Return the number of pages in a PDF file, or -1 on error."""
         try:
             with open(fname, "rb") as f:
                 return len(PdfReader(f).pages)
@@ -50,6 +46,71 @@ class PypdfParser:
             return -1
 
     def detect_mime_type(self, filepath: str) -> MimeTypeEnum:
+        """Return the MIME type for a file path; only PDF is supported."""
+        if os.path.splitext(filepath)[1].lower() == ".pdf":
+            return MimeTypeEnum.PDF
+        raise ValueError("Unsupported file format")
+
+    def post_process_page(self, page: OCRPageObject) -> dict[str, int | str]:
+        """Convert one Mistral OCR page into a ``{markdown, page}`` record."""
+        return {
+            "markdown": page.markdown,
+            "page": page.index,
+        }
+
+    def encode_pdf(self, pdf_path: str) -> str:
+        """Base64-encode a PDF file for the Mistral OCR document_url payload."""
+        with open(pdf_path, "rb") as pdf_file:
+            return base64.b64encode(pdf_file.read()).decode("utf-8")
+
+    async def parse(
+        self,
+        filepath: str,
+        max_pages: int = 200,
+    ) -> list[dict[str, int | str]]:
+        """Parse a PDF via the Mistral OCR API, returning per-page markdown.
+
+        Asserts the file is a PDF and within ``max_pages``; raises on OCR
+        failure.
+        """
+        assert self.detect_mime_type(filepath) == MimeTypeEnum.PDF, "Unsupported file format"
+        assert self.get_num_pages(filepath) <= max_pages, (
+            f"PDF file exceeds the maximum number of pages: {max_pages}"
+        )
+
+        res = await self.client.ocr.process_async(
+            model="mistral-ocr-latest",
+            document={
+                "type": "document_url",
+                "document_url": f"data:application/pdf;base64,{self.encode_pdf(filepath)}",
+            },
+            include_image_base64=False,
+        )
+
+        logger.info("Number of pages in the PDF file: %s", len(res.pages))
+
+        return [self.post_process_page(page) for page in res.pages]
+
+
+class PypdfParser:
+    """Local PDF text extractor (no API key), fallback when Mistral OCR is off.
+
+    Extracts embedded text per page with pypdf. Text-based PDFs parse fine;
+    scanned/image-only PDFs fall back to vision OCR via the Ollama Cloud
+    vision model, so they still work without a Mistral key.
+    """
+
+    def get_num_pages(self, fname: str) -> int:
+        """Return the number of pages in a PDF file, or -1 on error."""
+        try:
+            with open(fname, "rb") as f:
+                return len(PdfReader(f).pages)
+        except Exception as e:  # noqa: BLE001
+            logger.error("pypdf page count failed: %s", e)
+            return -1
+
+    def detect_mime_type(self, filepath: str) -> MimeTypeEnum:
+        """Return the MIME type for a file path; only PDF is supported."""
         if os.path.splitext(filepath)[1].lower() == ".pdf":
             return MimeTypeEnum.PDF
         raise ValueError("Unsupported file format")
@@ -62,9 +123,8 @@ class PypdfParser:
         """Extract per-page text from a PDF.
 
         Text-based pages use pypdf. Pages with little/no embedded text
-        (scanned / image PDFs) fall back to vision OCR: the page is
-        rendered to an image and transcribed by the Ollama Cloud vision
-        model — so scanned PDFs work without a Mistral key.
+        (scanned / image PDFs) fall back to vision OCR: the page is rendered
+        to an image and transcribed by the Ollama Cloud vision model.
         """
         assert self.detect_mime_type(filepath) == MimeTypeEnum.PDF, "Unsupported file format"
         with open(filepath, "rb") as f:
@@ -82,7 +142,7 @@ class PypdfParser:
 
 
 async def _vision_ocr_page(filepath: str, page_index: int) -> str:
-    """Render one PDF page to an image + transcribe it via the Ollama Cloud vision model."""
+    """Render one PDF page to an image and transcribe it via the Ollama Cloud vision model."""
     try:
         import fitz  # pymupdf
 
@@ -100,7 +160,9 @@ async def _vision_ocr_page(filepath: str, page_index: int) -> str:
         doc.close()
         return await _describe_image(
             data_url,
-            "Transcribe ALL text visible on this page exactly as written, preserving line breaks and structure. If there is no text, say '(no text)'.",
+            "Transcribe ALL text visible on this page exactly as written, "
+            "preserving line breaks and structure. If there is no text, "
+            "say '(no text)'.",
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("vision OCR failed on page %s: %s", page_index, e)
@@ -108,115 +170,9 @@ async def _vision_ocr_page(filepath: str, page_index: int) -> str:
 
 
 def get_parser():
-    """Return a MistralParser if MISTRAL_API_KEY is configured, else a
-    PypdfParser fallback so document upload works locally without an OCR
-    key (text PDFs only; scanned PDFs need Mistral).
-    """
+    """Return a MistralParser if MISTRAL_API_KEY is set, else a PypdfParser fallback."""
     try:
         return MistralParser.from_config()
     except ValueError:
         logger.info("Mistral OCR key not set — falling back to pypdf text extraction (no OCR).")
         return PypdfParser()
-
-    def get_num_pages(self, fname: str) -> int:
-        """Get the number of pages in a PDF file.
-
-        Args:
-            fname (str): The path to the PDF file.
-
-        Returns:
-            int: The number of pages in the PDF file. If an error occurs, -1 is returned.
-
-        """
-        try:
-            with open(fname, 'rb') as f:
-                # Create a PdfReader object
-                reader = PdfReader(f)
-
-                # Get the number of pages
-                number_of_pages = len(reader.pages)
-
-            return number_of_pages
-        except Exception as e:
-            logger.error(f"Error while getting the number of pages in the PDF file: {e}")
-            return -1
-
-    def detect_mime_type(self, filepath: str) -> MimeTypeEnum:
-        """Detect the MIME type of the document.
-
-        Returns:
-            MimeTypeEnum: MIME type of the document
-
-        """
-        suffix = os.path.splitext(filepath)[1]
-        if suffix.lower() == ".pdf":
-            return MimeTypeEnum.PDF
-        raise ValueError("Unsupported file format")
-
-    def post_process_page(self, page: OCRPageObject) -> dict[str, int | str]:
-        """Post-process the page data returned by the Mistral OCR API and return a markdown string.
-
-        Args:
-            page : page data returned by the Mistral OCR API
-
-        Returns:
-            dict[str, int | str]: page in markdown format and page number
-
-        """
-        return {
-            'markdown': page.markdown,
-            'page': page.index,
-        }
-
-    def encode_pdf(self, pdf_path: str) -> str:
-        """Encode the PDF file to base64.
-
-        Args:
-            pdf_path (str): The path to the PDF file.
-
-        Returns:
-            str: The base64 encoded PDF file.
-
-        """
-        with open(pdf_path, "rb") as pdf_file:
-            return base64.b64encode(pdf_file.read()).decode('utf-8')
-
-    async def parse(
-        self,
-        filepath: str,
-        max_pages: int = 200,
-    ) -> list[dict[str, int | str]]:
-        """Parse the PDF document at the given file path using the Mistral OCR API.
-
-        Args:
-            filepath (str): Path to the PDF file to parse.
-            max_pages (int, optional): Maximum number of pages allowed to parse. Defaults to 200.
-
-        Raises:
-            ValueError: If the file type is not supported.
-            AssertionError: If the number of pages in the PDF exceeds max_pages.
-            Exception: If an error occurs during OCR processing.
-
-        Returns:
-            list[dict[str, int | str]]: A list of dictionaries containing each page's markdown content and page number.
-
-        """
-        assert self.detect_mime_type(filepath) == MimeTypeEnum.PDF, "Unsupported file format"
-        assert self.get_num_pages(filepath) <= max_pages, f"PDF file exceeds the maximum number of pages: {max_pages}"
-
-        res = await self.client.ocr.process_async(
-            model="mistral-ocr-latest",
-            document={
-                "type": "document_url",
-                "document_url": f"data:application/pdf;base64,{self.encode_pdf(filepath)}"
-            },
-            include_image_base64=False,
-        )
-
-        logger.info(f"Number of pages in the PDF file: {len(res.pages)}")
-
-        pages = []
-        for page in res.pages:
-            pages.append(self.post_process_page(page))
-
-        return pages
