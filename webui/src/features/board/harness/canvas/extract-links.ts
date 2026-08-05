@@ -24,12 +24,12 @@ const MD_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g
 
 
 /** Bare URL not already wrapped in a markdown link. */
-const BARE_URL_RE = /(?<![\(\]])(?<![a-z0-9])https?:\/\/[^\s<>\)]+[a-z0-9]/gi
+const BARE_URL_RE = /(?<![(\]])(?<![a-z0-9])https?:\/\/[^\s<>)]+[a-z0-9]/gi
 
 
 /** Trim trailing punctuation that's not part of the URL. */
 const trimTrailingPunct = (url: string): string =>
-  url.replace(/[.,;:!?\)\]]+$/u, "")
+  url.replace(/[.,;:!?)\]]+$/u, "")
 
 
 /** Best-effort host extraction for a bare-URL label. */

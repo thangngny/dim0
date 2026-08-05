@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { asGroupId } from "@canvas-harness/core"
 import type { Node } from "@canvas-harness/core"
-import { isGroupCollapsed } from "./cluster-overlay"
+import { isGroupCollapsed } from "./cluster-overlay-utils"
 
 
 const mk = (id: string, groups: string[] = [], hidden = false): Node =>

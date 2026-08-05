@@ -32,7 +32,7 @@ import { useAiSparkActions } from "@/features/board/hooks/use-ai-spark-actions"
 import { useBoardAppStore } from "../store/board-app-store"
 import { nodeToNote } from "../convert/node-to-note"
 import { alignNodes, type AlignMode } from "../canvas/align-nodes"
-import { groupAndCollapse } from "../canvas/cluster-overlay"
+import { groupAndCollapse } from "../canvas/cluster-overlay-utils"
 import type { NoteNode } from "@/features/board/types/flow"
 
 

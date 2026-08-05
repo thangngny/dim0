@@ -1,107 +1,34 @@
 import { useCallback, useState } from "react"
 import { CaretDownIcon, SquaresFourIcon } from "@phosphor-icons/react"
-import {
-  asGroupId,
-  worldToScreen,
-  type CameraState,
-  type Group,
-  type GroupId,
-  type Node,
-  type NodeId,
-} from "@canvas-harness/core"
+import { type CameraState, type Group, type GroupId } from "@canvas-harness/core"
 import { useCamera, useCanvasStore, useNodes } from "@canvas-harness/react"
 import { cn } from "@/lib/utils"
-import { removeCollapsedGroup, saveCollapsedGroup } from "./collapsed-groups"
 import { useBoardAppStore } from "../store/board-app-store"
+import {
+  expandGroup,
+  groupCentroidScreen,
+  isGroupCollapsed,
+} from "./cluster-overlay-utils"
 
 
 /**
- * Feature D-rest — collapse/expand cluster.
+ * Feature D-rest — collapse/expand cluster overlay.
  *
- * "Group & collapse selected" (context menu) assigns the selected nodes
- * to a new canvas-harness Group and sets `hidden: true` on each member.
- * `hidden` is a serialized Node field so it round-trips through collab.
+ * While a group's members are all hidden (collapsed via `groupAndCollapse`
+ * from the context menu) this overlay renders a proxy chip at the group's
+ * centroid: the group name + a count + an "Expand" button. Clicking Expand
+ * un-hides every member so the cluster re-appears. The chip is
+ * pointer-events auto; the container is pointer-events none so canvas
+ * gestures stay unobstructed. Hidden only when zoomed out (illegible).
  *
- * While a group's members are all hidden this overlay renders a proxy
- * chip at the group's centroid: the group name + a count + an "Expand"
- * button. Clicking Expand sets `hidden: false` on every member so the
- * cluster re-appears. The chip is pointer-events auto; the container is
- * pointer-events none so canvas gestures stay unobstructed.
- *
- * Hidden only when zoomed out (illegible) like the link overlay.
+ * Pure logic (`groupAndCollapse`/`expandGroup`/`isGroupCollapsed`/
+ * `groupCentroidScreen`) lives in `cluster-overlay-utils.ts` so this file
+ * only exports components — Fast Refresh requires that.
  */
 
 
 /** Below this zoom the cluster proxy is hidden. */
 const MIN_ZOOM_FOR_PROXY = 0.4
-
-
-/**
- * Create a group from the given nodes, assign membership, and collapse
- * (hide) the members. Returns the new group id. Called from the context
- * menu. Name defaults to "Cluster N" but can be overridden. Persists the
- * collapsed state per-board so it survives reload.
- */
-export const groupAndCollapse = (
-  store: ReturnType<typeof useCanvasStore>,
-  nodes: Node[],
-  boardId: string,
-  name?: string,
-): GroupId | null => {
-  if (nodes.length < 2) return null
-  const id = store.generateId() as unknown as GroupId
-  const gid = asGroupId(String(id))
-  const groupName = name?.trim() || `Cluster ${store.getAllGroups().length + 1}`
-  store.upsertGroup({ id: gid, name: groupName })
-  for (const n of nodes) {
-    const groups = n.groups.includes(gid) ? n.groups : [...n.groups, gid]
-    store.updateNode(n.id as NodeId, { groups, hidden: true })
-  }
-  saveCollapsedGroup(boardId, gid, groupName)
-  return gid
-}
-
-
-/** Un-hide every member of a group (Expand) + drop it from the persisted set. */
-export const expandGroup = (
-  store: ReturnType<typeof useCanvasStore>,
-  gid: GroupId,
-  boardId: string,
-): void => {
-  const members = store.getAllNodes().filter((n) => n.groups.includes(gid))
-  for (const n of members) {
-    store.updateNode(n.id as NodeId, { hidden: false })
-  }
-  removeCollapsedGroup(boardId, gid)
-}
-
-
-/** Centroid (screen space) of a group's members, or null if none visible-in-store. */
-const groupCentroidScreen = (
-  gid: GroupId,
-  nodes: Node[],
-  camera: CameraState,
-): { x: number; y: number } | null => {
-  const members = nodes.filter((n) => n.groups.includes(gid))
-  if (members.length === 0) return null
-  let cx = 0
-  let cy = 0
-  for (const n of members) {
-    cx += n.x + n.w / 2
-    cy += n.y + n.h / 2
-  }
-  cx /= members.length
-  cy /= members.length
-  return worldToScreen({ x: cx, y: cy }, camera)
-}
-
-
-/** Is every member of a group currently hidden (collapsed)? */
-export const isGroupCollapsed = (gid: GroupId, nodes: Node[]): boolean => {
-  const members = nodes.filter((n) => n.groups.includes(gid))
-  if (members.length === 0) return false
-  return members.every((n) => n.hidden === true)
-}
 
 
 type ProxyChipProps = {
