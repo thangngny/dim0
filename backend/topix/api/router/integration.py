@@ -29,7 +29,6 @@ import logging
 import os
 import re
 import time
-import uuid
 
 from typing import Any
 
@@ -37,9 +36,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from topix.collab.agent_bridge import AgentBoardBridge
-from topix.datatypes.note.note import Note
 from topix.datatypes.note.link import Link
-from topix.datatypes.resource import RichText
+from topix.datatypes.note.note import Note
 from topix.store.graph import GraphStore
 
 logger = logging.getLogger(__name__)
@@ -57,8 +55,8 @@ def _get_token() -> str:
     t = os.getenv(_INTEGRATION_TOKEN_ENV, "")
     if not t:
         raise RuntimeError(
-            f"DIM0_INTEGRATION_TOKEN is not set. "
-            f"Set it in .env before using the integration API."
+            "DIM0_INTEGRATION_TOKEN is not set. "
+            "Set it in .env before using the integration API."
         )
     return t
 
@@ -424,14 +422,13 @@ async def batch_create(
     overall_redacted = False
 
     # Expand-scope create budget (if an expand research session is active)
-    from topix.integrations.research_scope import assert_can_create, note_created
-
     # Dedupe source/evidence by URL: reuse an existing node id instead of
     # creating a duplicate source the agent already added earlier.
     from topix.integrations.research_citation import (
         build_existing_url_index,
         plan_dedup,
     )
+    from topix.integrations.research_scope import assert_can_create, note_created
 
     existing_graph = await graph_store.get_graph(board_id)
     existing_nodes = [

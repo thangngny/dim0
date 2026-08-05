@@ -10,7 +10,6 @@ to fire the existing research SSE.
 from __future__ import annotations
 
 import logging
-from typing import Literal
 
 from pydantic import BaseModel, Field
 

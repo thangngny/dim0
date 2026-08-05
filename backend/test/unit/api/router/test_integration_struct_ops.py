@@ -6,8 +6,9 @@ enough of the surface (`get_nodes`, `get_graph`) for the merge preview
 path — the endpoint truly exercises the bridge, not a canned fake.
 """
 
-import pytest
 import httpx
+import pytest
+
 from fastapi import FastAPI
 from httpx import ASGITransport
 

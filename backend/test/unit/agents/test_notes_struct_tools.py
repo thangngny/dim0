@@ -4,29 +4,28 @@ import pytest
 
 from agents.tool_context import ToolContext
 
-from topix.agents.datatypes.context import Context
-from topix.agents.datatypes.outputs import (
-    ChangeKindOutput,
-    DeleteSubtreeOutput,
-    MergeNotesOutput,
-    RelayoutOutput,
-    ReparentNoteOutput,
-    SplitNoteOutput,
-)
-from topix.agents.notes.tools import create_change_note_kind_tool
-
 # Reuse the in-memory GraphStore + AgentBoardBridge fixtures shared with
 # the bridge-level structural-op tests. The bridge's `change_note_kind`
 # reads the note back via `get_nodes` and deep-merges patches via
 # `patch_note`, so the fake store must actually persist + return notes —
 # the `_MemGraphStore` in the collab test module already provides that.
-from test.unit.collab.test_agent_bridge_struct_ops import (  # noqa: E402
+from test.unit.collab.test_agent_bridge_struct_ops import (  # noqa: E402, F401, F811
     _make_note,
+    # Pytest fixtures — injected by name via test-function params
+    # (agent_bridge/board_id/graph_store) or needed transitively by
+    # agent_bridge (room_registry). They look unused/redefined to ruff
+    # but are required at collection time.
     agent_bridge,
     board_id,
     graph_store,
     room_registry,
 )
+from topix.agents.datatypes.context import Context
+from topix.agents.datatypes.outputs import (
+    ChangeKindOutput,
+    MergeNotesOutput,
+)
+from topix.agents.notes.tools import create_change_note_kind_tool
 
 
 def test_struct_output_compact_repr():
@@ -54,7 +53,7 @@ def _ctx() -> ToolContext[Context]:
 
 
 @pytest.mark.asyncio
-async def test_change_kind_tool_dispatches_to_bridge(graph_store, board_id, agent_bridge):
+async def test_change_kind_tool_dispatches_to_bridge(graph_store, board_id, agent_bridge):  # noqa: F811
     """The change-kind tool routes through the bridge's `change_note_kind`.
 
     Invokes the wrapped FunctionTool via the SDK's `on_invoke_tool` with a

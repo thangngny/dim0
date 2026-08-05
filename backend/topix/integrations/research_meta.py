@@ -12,7 +12,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 VALID_KINDS = frozenset({
     "question",
     "workstream",

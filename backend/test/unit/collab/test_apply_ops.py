@@ -1027,7 +1027,8 @@ async def test_edge_update_marks_failed_ids_as_not_applied():
     is reported not-applied — the rest of the bucket still acks. Regression:
     previously the whole bucket was acked `applied=True` for a silently
     dropped edge.update, so the client discarded optimistic state for a
-    write that never landed."""
+    write that never landed.
+    """
     store = _RecordingGraphStore()
     store.update_links_failed = {"e_bad"}
     ops = [

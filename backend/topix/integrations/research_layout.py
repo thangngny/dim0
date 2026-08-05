@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+
 from collections import defaultdict
 
 from topix.collab.agent_bridge import AgentBoardBridge

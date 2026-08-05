@@ -221,7 +221,7 @@ async def test_run_clarify_questions_ollama_fallback_when_claude_fails(monkeypat
 
 
 async def test_run_clarify_scope_is_deterministic_no_llama(monkeypatch):
-    """scope stage must fold topic+answers without invoking any LLM."""
+    """Scope stage must fold topic+answers without invoking any LLM."""
     async def boom_json(system, user):
         raise AssertionError("scope must not call the LLM")
     monkeypatch.setattr(rc, "_complete_json", boom_json)

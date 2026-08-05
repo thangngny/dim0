@@ -7,7 +7,6 @@ these helpers.
 
 from __future__ import annotations
 
-
 # Default top origin (matches research_layout._ORIGIN_Y).
 ORIGIN_Y = 80.0
 

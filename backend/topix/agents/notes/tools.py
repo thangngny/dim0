@@ -478,6 +478,7 @@ def create_change_note_kind_tool(
             kind (str): New kind — one of question, workstream, source, evidence,
                 finding, hypothesis, contradiction, unknown, alternative,
                 decision, summary, note.
+
         """
         if agent_bridge is None:
             raise ValueError("change_note_kind requires a live agent bridge.")
@@ -509,6 +510,7 @@ def create_reparent_note_tool(
         Args:
             note_id (str): Exact id of the note to move.
             parent_id (str | None): New parent note id, or None to move to the board root.
+
         """
         if agent_bridge is None:
             raise ValueError("reparent_note requires a live agent bridge.")
@@ -542,6 +544,7 @@ def create_delete_subtree_tool(
         Args:
             note_id (str): Root of the subtree to delete.
             confirm (bool): False = preview only; True = execute the delete.
+
         """
         if agent_bridge is None:
             raise ValueError("delete_subtree requires a live agent bridge.")
@@ -581,6 +584,7 @@ def create_merge_notes_tool(
             node_ids (list[str]): All note ids to merge, including the target.
             target_id (str): The note id that absorbs the others (must be in node_ids).
             confirm (bool): False = preview; True = execute.
+
         """
         if agent_bridge is None:
             raise ValueError("merge_notes requires a live agent bridge.")
@@ -620,6 +624,7 @@ def create_split_note_tool(
             parts (list[str]): Content chunk for each new note.
             confirm (bool): False = preview; True = execute.
             delete_original (bool): Whether to delete the original note (default True).
+
         """
         if agent_bridge is None:
             raise ValueError("split_note requires a live agent bridge.")
@@ -658,6 +663,7 @@ def create_relayout_tool(
         Args:
             scope_ids (list[str] | None): Node ids to relayout, or None for the whole board.
             mode (str): "default" or "research".
+
         """
         if agent_bridge is None:
             raise ValueError("relayout requires a live agent bridge.")

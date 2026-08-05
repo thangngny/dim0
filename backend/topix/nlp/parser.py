@@ -85,6 +85,7 @@ async def _vision_ocr_page(filepath: str, page_index: int) -> str:
     """Render one PDF page to an image + transcribe it via the Ollama Cloud vision model."""
     try:
         import fitz  # pymupdf
+
         from topix.agents.notes.vision import _describe_image  # local import to avoid cycle
     except ImportError:
         return ""

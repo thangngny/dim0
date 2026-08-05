@@ -10,6 +10,7 @@ import logging
 import os
 
 import httpx
+
 from openai import AsyncOpenAI
 
 from topix.config import catalog

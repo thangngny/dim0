@@ -10,7 +10,6 @@ asserts on the returned `style.type.value` and `background_color`).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
 from typing import Any
 
 import pytest

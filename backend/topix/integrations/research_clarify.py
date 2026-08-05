@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import shutil
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -185,8 +186,6 @@ async def run_clarify_questions_claude(
     subprocess env). Raises on any failure (missing bin, no board, bad JSON,
     timeout) so the caller can fall back to Ollama/static questions.
     """
-    import uuid
-
     claude_bin = shutil.which("claude")
     if not claude_bin:
         raise RuntimeError("claude CLI not found on PATH")

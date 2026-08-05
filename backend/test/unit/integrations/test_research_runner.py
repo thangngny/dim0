@@ -83,7 +83,8 @@ def test_completed_action_zero_nodes_starts_grace_then_expires():
 def test_completed_action_writes_during_grace_finishes_immediately():
     """If the agent writes during the grace window, finish as soon as
     nodes appear — the guard's whole purpose is to give the write time
-    to land, then treat it as a normal completion."""
+    to land, then treat it as a normal completion.
+    """
     action, _ = completed_early_done_action(
         completed=True, last_node_count=3, baseline=0,
         grace_started=100.0, now=125.0,
@@ -96,7 +97,8 @@ def test_completed_action_mutate_modes_finish_without_new_nodes():
     new ones, so node count never exceeds baseline. A `completed` event
     for these modes must finish immediately instead of falling into the
     0-node grace window (which would emit a false '0 nodes written'
-    warning and waste the grace timeout)."""
+    warning and waste the grace timeout).
+    """
     for mode in (ResearchMode.IMPROVE, ResearchMode.REFRAME, ResearchMode.CRITIQUE):
         action, _ = completed_early_done_action(
             completed=True, last_node_count=0, baseline=0,
@@ -183,7 +185,8 @@ def test_expand_scope_create_reservation_is_atomic():
     """Concurrent assert_can_create calls must not together exceed
     max_new_nodes. The count is reserved under the module lock at check
     time, so only ``max_new_nodes`` slots can ever be granted regardless
-    of concurrency."""
+    of concurrency.
+    """
     import threading
 
     board = "board-scope-race"

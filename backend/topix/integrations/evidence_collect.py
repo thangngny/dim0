@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,7 @@ async def collect_evidence_briefing(
           "results": [{title,url,snippet,engine}, ...],
           "briefing_text": str,  # inject into Claude prompt
         }
+
     """
     engines = _available_engines()
     queries = derive_search_queries(instruction, language=language)
