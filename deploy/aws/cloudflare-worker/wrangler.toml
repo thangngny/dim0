@@ -1,0 +1,13 @@
+# Cloudflare Worker that reverse-proxies dim0 on the EC2 origin to a stable
+# free *.workers.dev URL, bypassing the flaky VNPT<->AWS-SG direct route.
+#
+# Deploy from this directory:
+#   CLOUDFLARE_API_TOKEN=$(cat ~/.cf_token) npx wrangler@latest deploy
+#
+# After deploy, the stable URL is printed (dim0-proxy.<your-subdomain>.workers.dev).
+# Point users at that URL — HTTPS, stable, route-flap-proof.
+
+name = "dim0-proxy"
+main = "src/worker.js"
+compatibility_date = "2026-08-06"
+workers_dev = true
