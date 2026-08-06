@@ -15,6 +15,10 @@ After=network.target
 Type=simple
 User=__SERVICE_USER__
 WorkingDirectory=__INSTALL_DIR__/backend
+# Include the service user's ~/.local/bin so the research runner finds the
+# claude CLI (installed there by setup.sh). systemd's default PATH omits it,
+# and shutil.which("claude") would otherwise fail with "claude CLI not found".
+Environment="PATH=/home/__SERVICE_USER__/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EnvironmentFile=/etc/dim0/env
 ExecStart=__INSTALL_DIR__/backend/.venv/bin/python -m topix.api.app --port __BACKEND_PORT__
 Restart=always
