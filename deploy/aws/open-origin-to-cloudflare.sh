@@ -86,4 +86,4 @@ done
 
 echo "==> all done. The Cloudflare proxy at https://dim0-proxy.dim0-thang.workers.dev"
 echo "    should now reach the origin (200). Re-test:"
-printf '    curl -s -o /dev/null -w "%%{http_code}\\n" https://dim0-proxy.dim0-thang.workers.dev/api/integration/health\n'
+printf '    curl -s -o /dev/null -w "%%{http_code}\\n" https://dim0-proxy.dim0-thang.workers.dev/integration/health\n'
