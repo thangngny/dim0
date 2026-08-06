@@ -111,7 +111,8 @@ fi
 
 echo "==> [8/9] Install app to $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR"
-# rsync if available (excludes .git/.venv/node_modules), else cp.
+# rsync if available (excludes .git/.venv/node_modules — venv rebuilt below),
+# else cp.
 if command -v rsync >/dev/null 2>&1; then
   sudo rsync -a --delete \
     --exclude '.git' --exclude 'backend/.venv' --exclude 'webui/node_modules' \
@@ -120,6 +121,16 @@ else
   sudo cp -a "$ROOT"/* "$INSTALL_DIR/"
 fi
 sudo chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
+# Recreate the backend venv in-place at the install location (the rsync above
+# excludes backend/.venv, and venvs aren't reliably relocatable by copy).
+# uv reuses its download cache, so this is fast on a re-run.
+(cd "$INSTALL_DIR/backend" && uv sync --quiet)
+PY_INSTALL="$INSTALL_DIR/backend/.venv/bin/python"
+if [ ! -x "$PY_INSTALL" ]; then
+  echo "  ERROR: $PY_INSTALL not created — backend won't start" >&2
+else
+  echo "  $($PY_INSTALL --version) at $PY_INSTALL"
+fi
 
 echo "==> [9/9] systemd unit + nginx site"
 sudo mkdir -p /etc/dim0
