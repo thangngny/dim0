@@ -103,6 +103,11 @@ ENV
 
   echo "==> [7/9] Webui build (tsc -b && vite build) — may take ~30-60s"
   export NODE_OPTIONS="--max-old-space-size=4096"
+  # Production is single-origin (config.js sets apiBase=""), so never bake a
+  # localhost API base into the bundle — an explicit empty VITE_API_URL wins
+  # over the dev .env's `http://localhost:8899` (dotenv-cli doesn't override
+  # already-set env vars). The runtime config/api.ts then resolves same-origin.
+  export VITE_API_URL=""
   (cd webui && npm ci --silent && npm run build)
   echo "    dist: $(find webui/dist -mindepth 1 -maxdepth 1 | wc -l) entries"
 else
