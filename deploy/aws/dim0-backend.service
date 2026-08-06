@@ -1,0 +1,26 @@
+# systemd unit for the dim0 backend (FastAPI, single-origin deploy).
+#
+# setup.sh substitutes __INSTALL_DIR__, __SERVICE_USER__, __BACKEND_PORT__
+# and installs this to /etc/systemd/system/dim0-backend.service.
+#
+# The backend serves the built webui (launcher + canvas) via DIM0_WEBUI_DIST,
+# so nginx only reverse-proxies to this one process. Secrets/DB creds live in
+# /etc/dim0/env (EnvironmentFile) — not in this unit — so they stay out of git.
+
+[Unit]
+Description=Dim0 backend (FastAPI, single-origin: serves launcher + canvas)
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+WorkingDirectory=__INSTALL_DIR__/backend
+EnvironmentFile=/etc/dim0/env
+ExecStart=__INSTALL_DIR__/backend/.venv/bin/python -m topix.api.app --port __BACKEND_PORT__
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/dim0-backend.log
+StandardError=append:/var/log/dim0-backend.log
+
+[Install]
+WantedBy=multi-user.target
