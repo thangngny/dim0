@@ -1,5 +1,7 @@
 """Graph API Router."""
 
+import logging
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
@@ -9,7 +11,7 @@ from topix.agents.assistant.code import DEFAULT_LANGUAGE, RUNNABLE_LANGUAGES, ex
 from topix.agents.datatypes.context import Context
 from topix.agents.describe_board import DescribeBoard
 from topix.agents.run import AgentRunner
-from topix.agents.sessions import AssistantSession
+from topix.agents.sessions import AssistantSession, fallback_label_from_items
 from topix.api.datatypes.requests import (
     AddLinksRequest,
     AddNotesRequest,
@@ -29,6 +31,8 @@ from topix.datatypes.graph.graph import Graph
 from topix.datatypes.note.style import NodeType
 from topix.store.chat import ChatStore
 from topix.store.graph import GraphStore
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/boards",
@@ -165,8 +169,22 @@ async def describe_board(
 
     context = Context()
     session = AssistantSession(session_id=chat_id, chat_store=chat_store)
+    items = await session.get_items()
+
+    # Best-effort auto-labeling: Ollama cloud models sometimes return prose
+    # instead of the requested JSON, which raises a parse error. Fall back to a
+    # label derived from the first user message rather than 500-ing.
+    fallback = fallback_label_from_items(items) or current_label or "Untitled"
+    if not items:
+        return {"label": fallback}
+
     board_describer = DescribeBoard()
-    label = await AgentRunner.run(board_describer, await session.get_items(), context=context)
+    try:
+        label = await AgentRunner.run(board_describer, items, context=context)
+    except Exception as exc:  # noqa: BLE001 — auto-labeling is best-effort
+        logger.warning("describe_board agent failed for %s: %s", graph_id, exc)
+        label = fallback
+    label = label or fallback
 
     if label:
         await graph_store.update_graph(graph_uid=graph_id, data={"label": label})

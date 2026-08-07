@@ -13,7 +13,7 @@ from topix.agents.datatypes.context import Context, ReasoningContext
 from topix.agents.deep_research import DeepResearch
 from topix.agents.describe_chat import DescribeChat
 from topix.agents.run import AgentRunner
-from topix.agents.sessions import AssistantSession
+from topix.agents.sessions import AssistantSession, fallback_label_from_items
 from topix.api.datatypes.requests import (
     ChatUpdateRequest,
     MessageUpdateRequest,
@@ -82,13 +82,26 @@ async def describe_chat(
     chat_id: Annotated[str, Path(description="Chat ID")],
     _: Annotated[None, Depends(verify_chat_user)],
 ):
-    """Describe a chat by its ID."""
+    """Describe a chat by its ID (best-effort; falls back if the model returns non-JSON)."""
     context = Context()
     store: ChatStore = request.app.chat_store
     session = AssistantSession(session_id=chat_id, chat_store=store)
+    items = await session.get_items()
+
+    # Ollama cloud models sometimes return prose instead of the requested JSON
+    # title; fall back to a label derived from the first user message.
+    fallback = fallback_label_from_items(items) or "Untitled"
+    if not items:
+        await store.update_chat(chat_id, {"label": fallback})
+        return {"label": fallback}
 
     chat_describer = DescribeChat()
-    label = await AgentRunner.run(chat_describer, await session.get_items(), context=context)
+    try:
+        label = await AgentRunner.run(chat_describer, items, context=context)
+    except Exception as exc:  # noqa: BLE001 — auto-labeling is best-effort
+        logger.warning("describe_chat agent failed for %s: %s", chat_id, exc)
+        label = fallback
+    label = label or fallback
 
     await store.update_chat(chat_id, {"label": label})
     return {"label": label}
