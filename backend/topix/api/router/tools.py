@@ -17,6 +17,7 @@ from topix.api.datatypes.requests import ConvertToMindMapRequest, TranslateTextR
 from topix.api.utils.decorators import with_standard_response
 from topix.api.utils.rate_limit.dependency import rate_limiter
 from topix.api.utils.security import get_current_user_uid
+from topix.api.utils.streaming_tool import stream_tool_conversion
 from topix.datatypes.note.note import Note
 from topix.datatypes.resource import RichText
 from topix.utils.web.preview import preview_webpage
@@ -52,24 +53,19 @@ async def notify(
 
 @router.post("/mindmaps:mapify/", include_in_schema=False)
 @router.post("/mindmaps:mapify")
-@with_standard_response
 async def mapify(
-    response: Response,
-    request: Request,
     user_id: Annotated[str, Depends(get_current_user_uid)],
     body: Annotated[ConvertToMindMapRequest, Body(description="Mindmap conversion data")],
     _: Annotated[None, Depends(rate_limiter)],
 ):
-    """Convert a mindmap to a graph."""
+    """Convert an answer into a mindmap graph (streamed with keep-alive)."""
     context = Context()
     mapify_agent = MapifyAgent()
-    res = await AgentRunner.run(mapify_agent, body.answer, context=context)
-    notes, links = convert_mapify_output_to_notes_links(res)
 
-    return {
-        "notes": [note.model_dump(exclude_none=True) for note in notes],
-        "links": [link.model_dump(exclude_none=True) for link in links]
-    }
+    async def run_fn():
+        return await AgentRunner.run(mapify_agent, body.answer, context=context)
+
+    return stream_tool_conversion(run_fn, convert_mapify_output_to_notes_links)
 
 
 @router.post("/mindmaps:schemify/", include_in_schema=False)
