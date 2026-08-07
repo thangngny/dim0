@@ -31,24 +31,19 @@ router = APIRouter(
 
 @router.post("/mindmaps:notify/", include_in_schema=False)
 @router.post("/mindmaps:notify")
-@with_standard_response
 async def notify(
-    response: Response,
-    request: Request,
     user_id: Annotated[str, Depends(get_current_user_uid)],
     body: Annotated[ConvertToMindMapRequest, Body(description="Mindmap conversion data")],
     _: Annotated[None, Depends(rate_limiter)],
 ):
-    """Convert a mindmap to a graph."""
+    """Convert an answer into a notify graph (streamed with keep-alive)."""
     context = Context()
-    mapify_agent = NotifyAgent()
-    res = await AgentRunner.run(mapify_agent, body.answer, context=context)
-    notes, links = convert_notify_output_to_notes_links(res)
+    notify_agent = NotifyAgent()
 
-    return {
-        "notes": [note.model_dump(exclude_none=True) for note in notes],
-        "links": [link.model_dump(exclude_none=True) for link in links]
-    }
+    async def run_fn():
+        return await AgentRunner.run(notify_agent, body.answer, context=context)
+
+    return stream_tool_conversion(run_fn, convert_notify_output_to_notes_links)
 
 
 @router.post("/mindmaps:mapify/", include_in_schema=False)
@@ -70,90 +65,70 @@ async def mapify(
 
 @router.post("/mindmaps:schemify/", include_in_schema=False)
 @router.post("/mindmaps:schemify")
-@with_standard_response
 async def schemify(
-    response: Response,
-    request: Request,
     user_id: Annotated[str, Depends(get_current_user_uid)],
     body: Annotated[ConvertToMindMapRequest, Body(description="Mindmap conversion data")],
     _: Annotated[None, Depends(rate_limiter)],
 ):
-    """Convert a mindmap to a graph using Schemify."""
+    """Convert an answer into a schema graph (streamed with keep-alive)."""
     context = Context()
     schemify_agent = SchemifyAgent()
-    res = await AgentRunner.run(schemify_agent, body.answer, context=context)
-    notes, links = convert_schemify_output_to_notes_links(res)
 
-    return {
-        "notes": [note.model_dump(exclude_none=True) for note in notes],
-        "links": [link.model_dump(exclude_none=True) for link in links]
-    }
+    async def run_fn():
+        return await AgentRunner.run(schemify_agent, body.answer, context=context)
+
+    return stream_tool_conversion(run_fn, convert_schemify_output_to_notes_links)
 
 
 @router.post("/mindmaps:summify/", include_in_schema=False)
 @router.post("/mindmaps:summify")
-@with_standard_response
 async def summify(
-    response: Response,
-    request: Request,
     user_id: Annotated[str, Depends(get_current_user_uid)],
     body: Annotated[ConvertToMindMapRequest, Body(description="Mindmap conversion data")],
     _: Annotated[None, Depends(rate_limiter)],
 ):
-    """Convert a mindmap to a graph using Summify."""
+    """Convert an answer into a summary graph (streamed with keep-alive)."""
     context = Context()
     summify_agent = SummifyAgent()
-    res = await AgentRunner.run(summify_agent, body.answer, context=context)
-    notes, links = convert_schemify_output_to_notes_links(res)
 
-    return {
-        "notes": [note.model_dump(exclude_none=True) for note in notes],
-        "links": [link.model_dump(exclude_none=True) for link in links]
-    }
+    async def run_fn():
+        return await AgentRunner.run(summify_agent, body.answer, context=context)
+
+    return stream_tool_conversion(run_fn, convert_schemify_output_to_notes_links)
 
 
 @router.post("/mindmaps:quizify/", include_in_schema=False)
 @router.post("/mindmaps:quizify")
-@with_standard_response
 async def quizify(
-    response: Response,
-    request: Request,
     user_id: Annotated[str, Depends(get_current_user_uid)],
     body: Annotated[ConvertToMindMapRequest, Body(description="Mindmap conversion data")],
     _: Annotated[None, Depends(rate_limiter)],
 ):
-    """Convert a mindmap to a quiz graph using Quizify."""
+    """Convert an answer into a quiz graph (streamed with keep-alive)."""
     context = Context()
     quizify_agent = QuizifyAgent()
-    res = await AgentRunner.run(quizify_agent, body.answer, context=context)
-    notes, links = convert_schemify_output_to_notes_links(res)
 
-    return {
-        "notes": [note.model_dump(exclude_none=True) for note in notes],
-        "links": [link.model_dump(exclude_none=True) for link in links]
-    }
+    async def run_fn():
+        return await AgentRunner.run(quizify_agent, body.answer, context=context)
+
+    return stream_tool_conversion(run_fn, convert_schemify_output_to_notes_links)
 
 
 @router.post("/drawify/", include_in_schema=False)
 @router.post("/drawify")
-@with_standard_response
 async def drawify(
-    response: Response,
-    request: Request,
     user_id: Annotated[str, Depends(get_current_user_uid)],
     body: Annotated[ConvertToMindMapRequest, Body(description="Drawify conversion data")],
     _: Annotated[None, Depends(rate_limiter)],
 ):
-    """Convert a text prompt to a drawn diagram graph."""
+    """Convert a text prompt into a drawn diagram graph (streamed with keep-alive)."""
     context = Context()
     drawify_agent = DrawifyAgent()
-    res = await AgentRunner.run(drawify_agent, body.answer, context=context)
-    notes, links = convert_drawify_output_to_notes_links(res)
 
-    return {
-        "notes": [note.model_dump(exclude_none=True) for note in notes],
-        "links": [link.model_dump(exclude_none=True) for link in links]
-    }
+    async def run_fn():
+        return await AgentRunner.run(drawify_agent, body.answer, context=context)
+
+    return stream_tool_conversion(run_fn, convert_drawify_output_to_notes_links)
 
 
 @router.post("/webpages/preview/", include_in_schema=False)
@@ -172,24 +147,22 @@ async def link_preview(
 
 @router.post("/text:translate/", include_in_schema=False)
 @router.post("/text:translate")
-@with_standard_response
 async def translate_text(
-    response: Response,
-    request: Request,
     user_id: Annotated[str, Depends(get_current_user_uid)],
     body: Annotated[TranslateTextRequest, Body(description="Text translation data")],
     _: Annotated[None, Depends(rate_limiter)],
 ):
-    """Translate a text into the target language and return notes/links."""
+    """Translate text into the target language (streamed with keep-alive)."""
     context = Context()
     translate_agent = TranslateAgent(target_language=body.target_language)
-    res = await AgentRunner.run(translate_agent, body.text, context=context)
 
-    return {
-        "notes": [
-            Note(
-                label=RichText(markdown=res.text),
-            ).model_dump(exclude_none=True)
-        ],
-        "links": []
-    }
+    async def run_fn():
+        return await AgentRunner.run(translate_agent, body.text, context=context)
+
+    def convert_fn(res):
+        return (
+            [Note(label=RichText(markdown=res.text))],
+            [],
+        )
+
+    return stream_tool_conversion(run_fn, convert_fn)
