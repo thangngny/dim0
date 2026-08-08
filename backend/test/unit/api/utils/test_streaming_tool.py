@@ -90,3 +90,31 @@ async def test_client_disconnect_cancels_task() -> None:
 
     await asyncio.wait_for(cancel_seen.wait(), timeout=1)
     assert cancel_seen.is_set()
+
+
+@pytest.mark.asyncio
+async def test_hung_agent_times_out_and_cancels_task() -> None:
+    """A never-returning agent yields error JSON after max_lifetime and is cancelled."""
+    cancel_seen = asyncio.Event()
+
+    async def run_fn():
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancel_seen.set()
+            raise
+
+    def convert_fn(_result):
+        return [], []
+
+    chunks = [
+        c async for c in _stream(
+            run_fn, convert_fn, heartbeat_interval=0.05, max_lifetime=0.2
+        )
+    ]
+
+    payload = json.loads(chunks[-1])
+    assert payload["status"] == "error"
+    assert "timed out" in payload["data"]["message"]
+    await asyncio.wait_for(cancel_seen.wait(), timeout=1)
+    assert cancel_seen.is_set()
